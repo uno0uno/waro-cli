@@ -59,12 +59,31 @@ waro sales list --dry-run
 waro config
 ```
 
+## Shell Completion
+
+Generate and install a completion script for your shell:
+
+```bash
+# zsh (recommended)
+waro completions zsh > ~/.zsh/completions/_waro
+# Reload: exec zsh
+
+# bash
+waro completions bash | sudo tee /etc/bash_completion.d/waro
+
+# fish
+waro completions fish > ~/.config/fish/completions/waro.fish
+```
+
+Supported shells: `bash`, `zsh`, `fish`, `powershell`, `elvish`
+
 ## Global flags
 
 | Flag | Description |
 |---|---|
 | `--output json\|table` | Output format (default: json) |
 | `--fields id,name,...` | Return only these fields (reduces response size) |
+| `--no-color` | Disable colored output |
 
 ## Authentication
 

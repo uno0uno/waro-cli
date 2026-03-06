@@ -5,6 +5,7 @@ mod output;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use clap_complete::Shell;
 
 #[derive(Parser)]
 #[command(
@@ -38,6 +39,11 @@ enum Commands {
     Menu(commands::menu::MenuArgs),
     /// Print current config (API URL, key prefix)
     Config,
+    /// Generate shell completion script
+    Completions {
+        /// Shell to generate completions for
+        shell: Shell,
+    },
 }
 
 #[tokio::main]
@@ -63,6 +69,14 @@ async fn main() {
 }
 
 async fn run(cli: Cli) -> Result<()> {
+    // Handle completions before loading config — no API key needed
+    if let Commands::Completions { shell } = cli.command {
+        use clap::CommandFactory;
+        use clap_complete::generate;
+        generate(shell, &mut Cli::command(), "waro", &mut std::io::stdout());
+        return Ok(());
+    }
+
     let cfg = config::Config::from_env()?;
     let client = client::WaroClient::new(cfg);
 
@@ -75,6 +89,7 @@ async fn run(cli: Cli) -> Result<()> {
         Commands::Config => {
             client.print_config();
         }
+        Commands::Completions { .. } => unreachable!(),
     }
 
     Ok(())
