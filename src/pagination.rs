@@ -1,5 +1,6 @@
 use crate::client::WaroClient;
 use crate::output;
+use crate::spinner::Spinner;
 use anyhow::Result;
 use serde_json::{json, Value};
 
@@ -14,6 +15,7 @@ pub async fn fetch_all(
     limit: u32,
     fields: Option<&str>,
 ) -> Result<()> {
+    let sp = Spinner::start();
     let mut offset: u32 = 0;
     loop {
         base_body["limit"] = json!(limit);
@@ -23,6 +25,7 @@ pub async fn fetch_all(
         let items = extract_items(&resp);
 
         if items.is_empty() {
+            sp.stop();
             break;
         }
 
@@ -33,6 +36,7 @@ pub async fn fetch_all(
         }
 
         if page_len < limit as usize {
+            sp.stop();
             break;
         }
 

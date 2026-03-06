@@ -1,6 +1,7 @@
 use crate::client::WaroClient;
 use crate::output;
 use crate::pagination;
+use crate::spinner::Spinner;
 use crate::validate;
 use anyhow::Result;
 use clap::{Args, Subcommand};
@@ -178,7 +179,9 @@ async fn list(
     let mut body = filters;
     body["limit"] = json!(a.limit);
     body["offset"] = json!(a.offset);
+    let sp = Spinner::start();
     let resp = client.post("/v1/sales", body).await?;
+    sp.stop();
     let resp = output::apply_fields(resp, fields.as_deref());
     output::print(&resp, format)?;
     Ok(())
@@ -218,7 +221,9 @@ async fn metrics(
         return Ok(());
     }
 
+    let sp = Spinner::start();
     let resp = client.post("/v1/sales/metrics", body).await?;
+    sp.stop();
     let resp = output::apply_fields(resp, fields.as_deref());
     output::print(&resp, format)?;
     Ok(())
@@ -241,7 +246,9 @@ async fn detail(
         return Ok(());
     }
 
+    let sp = Spinner::start();
     let resp = client.post("/v1/sales/detail", body).await?;
+    sp.stop();
     let resp = output::apply_fields(resp, fields.as_deref());
     output::print(&resp, format)?;
     Ok(())

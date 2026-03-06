@@ -3,6 +3,7 @@ mod commands;
 mod config;
 mod output;
 mod pagination;
+mod spinner;
 mod validate;
 
 use anyhow::Result;
@@ -90,6 +91,8 @@ async fn run(cli: Cli) -> Result<()> {
 
     let cfg = config::Config::load(cli.profile.as_deref())?;
     let client = client::WaroClient::new(cfg);
+
+    spinner::print_welcome();
 
     let out_format = cli.output.clone();
     let fields = cli.fields.clone();
