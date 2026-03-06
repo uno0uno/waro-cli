@@ -1,5 +1,9 @@
 use serde_json::json;
+use std::sync::Mutex;
 use waro_cli::output::apply_fields;
+
+/// Mutex to serialize tests that mutate environment variables.
+static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
 #[test]
 fn apply_fields_filters_object_keys() {
@@ -46,7 +50,7 @@ fn apply_fields_returns_value_unchanged_when_no_fields() {
 
 #[test]
 fn config_errors_without_api_key() {
-    // Ensure WARO_API_KEY is not set in this test
+    let _guard = ENV_MUTEX.lock().unwrap();
     std::env::remove_var("WARO_API_KEY");
 
     let result = waro_cli::config::Config::from_env();
@@ -58,6 +62,7 @@ fn config_errors_without_api_key() {
 
 #[test]
 fn config_uses_default_api_url_when_not_set() {
+    let _guard = ENV_MUTEX.lock().unwrap();
     std::env::remove_var("WARO_API_URL");
     std::env::set_var("WARO_API_KEY", "waro_sk_test");
 

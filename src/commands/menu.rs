@@ -1,5 +1,6 @@
 use crate::client::WaroClient;
 use crate::output;
+use crate::pagination;
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use serde_json::json;
@@ -22,11 +23,17 @@ pub enum MenuCommands {
 
 #[derive(Args)]
 pub struct ProductsArgs {
+    /// Max results per page (1-250)
     #[arg(long, default_value = "50")]
     limit: u32,
 
+    /// Pagination offset (ignored when --all is set)
     #[arg(long, default_value = "0")]
     offset: u32,
+
+    /// Fetch all pages automatically and output NDJSON
+    #[arg(long)]
+    all: bool,
 
     /// Filter by category UUID
     #[arg(long)]
@@ -54,11 +61,17 @@ pub struct ProductsArgs {
 
 #[derive(Args)]
 pub struct RecipesArgs {
+    /// Max results per page (1-250)
     #[arg(long, default_value = "50")]
     limit: u32,
 
+    /// Pagination offset (ignored when --all is set)
     #[arg(long, default_value = "0")]
     offset: u32,
+
+    /// Fetch all pages automatically and output NDJSON
+    #[arg(long)]
+    all: bool,
 
     #[arg(long)]
     is_active: Option<bool>,
@@ -69,11 +82,17 @@ pub struct RecipesArgs {
 
 #[derive(Args)]
 pub struct ModifiersArgs {
+    /// Max results per page (1-250)
     #[arg(long, default_value = "50")]
     limit: u32,
 
+    /// Pagination offset (ignored when --all is set)
     #[arg(long, default_value = "0")]
     offset: u32,
+
+    /// Fetch all pages automatically and output NDJSON
+    #[arg(long)]
+    all: bool,
 
     #[arg(long)]
     dry_run: bool,
@@ -98,9 +117,7 @@ async fn products(
     format: &str,
     fields: Option<String>,
 ) -> Result<()> {
-    let body = json!({
-        "limit": a.limit,
-        "offset": a.offset,
+    let filters = json!({
         "categoryId": a.category_id,
         "isAvailable": a.is_available,
         "includeIngredients": a.include_ingredients,
@@ -109,11 +126,33 @@ async fn products(
     });
 
     if a.dry_run {
-        println!("DRY RUN — POST /v1/menu/products");
+        let suffix = if a.all {
+            " (--all mode, showing first page)"
+        } else {
+            ""
+        };
+        let mut body = filters.clone();
+        body["limit"] = json!(a.limit);
+        body["offset"] = json!(if a.all { 0 } else { a.offset });
+        println!("DRY RUN — POST /v1/menu/products{}", suffix);
         println!("{}", serde_json::to_string_pretty(&body)?);
         return Ok(());
     }
 
+    if a.all {
+        return pagination::fetch_all(
+            client,
+            "/v1/menu/products",
+            filters,
+            a.limit,
+            fields.as_deref(),
+        )
+        .await;
+    }
+
+    let mut body = filters;
+    body["limit"] = json!(a.limit);
+    body["offset"] = json!(a.offset);
     let resp = client.post("/v1/menu/products", body).await?;
     let resp = output::apply_fields(resp, fields.as_deref());
     output::print(&resp, format)?;
@@ -126,18 +165,38 @@ async fn recipes(
     format: &str,
     fields: Option<String>,
 ) -> Result<()> {
-    let body = json!({
-        "limit": a.limit,
-        "offset": a.offset,
+    let filters = json!({
         "isActive": a.is_active,
     });
 
     if a.dry_run {
-        println!("DRY RUN — POST /v1/menu/recipes");
+        let suffix = if a.all {
+            " (--all mode, showing first page)"
+        } else {
+            ""
+        };
+        let mut body = filters.clone();
+        body["limit"] = json!(a.limit);
+        body["offset"] = json!(if a.all { 0 } else { a.offset });
+        println!("DRY RUN — POST /v1/menu/recipes{}", suffix);
         println!("{}", serde_json::to_string_pretty(&body)?);
         return Ok(());
     }
 
+    if a.all {
+        return pagination::fetch_all(
+            client,
+            "/v1/menu/recipes",
+            filters,
+            a.limit,
+            fields.as_deref(),
+        )
+        .await;
+    }
+
+    let mut body = filters;
+    body["limit"] = json!(a.limit);
+    body["offset"] = json!(a.offset);
     let resp = client.post("/v1/menu/recipes", body).await?;
     let resp = output::apply_fields(resp, fields.as_deref());
     output::print(&resp, format)?;
@@ -150,17 +209,36 @@ async fn modifiers(
     format: &str,
     fields: Option<String>,
 ) -> Result<()> {
-    let body = json!({
-        "limit": a.limit,
-        "offset": a.offset,
-    });
+    let filters = json!({});
 
     if a.dry_run {
-        println!("DRY RUN — POST /v1/menu/modifiers");
+        let suffix = if a.all {
+            " (--all mode, showing first page)"
+        } else {
+            ""
+        };
+        let mut body = filters.clone();
+        body["limit"] = json!(a.limit);
+        body["offset"] = json!(if a.all { 0 } else { a.offset });
+        println!("DRY RUN — POST /v1/menu/modifiers{}", suffix);
         println!("{}", serde_json::to_string_pretty(&body)?);
         return Ok(());
     }
 
+    if a.all {
+        return pagination::fetch_all(
+            client,
+            "/v1/menu/modifiers",
+            filters,
+            a.limit,
+            fields.as_deref(),
+        )
+        .await;
+    }
+
+    let mut body = filters;
+    body["limit"] = json!(a.limit);
+    body["offset"] = json!(a.offset);
     let resp = client.post("/v1/menu/modifiers", body).await?;
     let resp = output::apply_fields(resp, fields.as_deref());
     output::print(&resp, format)?;

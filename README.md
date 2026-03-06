@@ -52,6 +52,10 @@ waro menu modifiers
 # Table output
 waro --output table sales list --fields id,status,total --limit 10
 
+# Auto-paginate (NDJSON output, one object per line)
+waro sales list --all --fields id,status,total
+waro menu products --all | wc -l
+
 # Dry run (validate without API call)
 waro sales list --dry-run
 

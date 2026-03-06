@@ -1,5 +1,6 @@
 use crate::client::WaroClient;
 use crate::output;
+use crate::pagination;
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use serde_json::json;
@@ -24,13 +25,17 @@ pub enum SalesCommands {
 
 #[derive(Args)]
 pub struct ListArgs {
-    /// Max results (1-250)
+    /// Max results per page (1-250)
     #[arg(long, default_value = "50")]
     limit: u32,
 
-    /// Pagination offset
+    /// Pagination offset (ignored when --all is set)
     #[arg(long, default_value = "0")]
     offset: u32,
+
+    /// Fetch all pages automatically and output NDJSON
+    #[arg(long)]
+    all: bool,
 
     /// Filter by payment method: cash | card | digital
     #[arg(long)]
@@ -124,9 +129,8 @@ async fn list(
     format: &str,
     fields: Option<String>,
 ) -> Result<()> {
-    let body = json!({
-        "limit": a.limit,
-        "offset": a.offset,
+    // Filters shared by single-page and --all modes
+    let filters = json!({
         "paymentMethod": a.payment_method,
         "status": a.status,
         "dateFrom": a.date_from,
@@ -137,11 +141,27 @@ async fn list(
     });
 
     if a.dry_run {
-        println!("DRY RUN — POST /v1/sales");
+        let suffix = if a.all {
+            " (--all mode, showing first page)"
+        } else {
+            ""
+        };
+        let mut body = filters.clone();
+        body["limit"] = json!(a.limit);
+        body["offset"] = json!(if a.all { 0 } else { a.offset });
+        println!("DRY RUN — POST /v1/sales{}", suffix);
         println!("{}", serde_json::to_string_pretty(&body)?);
         return Ok(());
     }
 
+    if a.all {
+        return pagination::fetch_all(client, "/v1/sales", filters, a.limit, fields.as_deref())
+            .await;
+    }
+
+    let mut body = filters;
+    body["limit"] = json!(a.limit);
+    body["offset"] = json!(a.offset);
     let resp = client.post("/v1/sales", body).await?;
     let resp = output::apply_fields(resp, fields.as_deref());
     output::print(&resp, format)?;

@@ -2,6 +2,7 @@ mod client;
 mod commands;
 mod config;
 mod output;
+mod pagination;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
