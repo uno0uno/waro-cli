@@ -12,10 +12,13 @@ cargo build --release
 # Binary at: ./target/release/waro
 ```
 
-### Prebuilt binary (coming soon)
+### Prebuilt binary (macOS + Linux)
 ```bash
-curl -fsSL https://get.warocol.com/cli | sh
+curl -fsSL https://raw.githubusercontent.com/uno0uno/waro-cli/main/install.sh | sh
 ```
+
+Installs to `/usr/local/bin/waro` (or `~/.local/bin/waro` if no write access).
+Supported: macOS ARM64, macOS Intel, Linux x86_64, Linux ARM64.
 
 ## Setup
 
