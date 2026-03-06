@@ -45,6 +45,8 @@ enum Commands {
         /// Shell to generate completions for
         shell: Shell,
     },
+    /// Introspect endpoint schema — for AI agents and tooling
+    Schema(commands::schema::SchemaArgs),
 }
 
 #[tokio::main]
@@ -70,12 +72,15 @@ async fn main() {
 }
 
 async fn run(cli: Cli) -> Result<()> {
-    // Handle completions before loading config — no API key needed
+    // Handle completions and schema before loading config — no API key needed
     if let Commands::Completions { shell } = cli.command {
         use clap::CommandFactory;
         use clap_complete::generate;
         generate(shell, &mut Cli::command(), "waro", &mut std::io::stdout());
         return Ok(());
+    }
+    if let Commands::Schema(args) = cli.command {
+        return commands::schema::run(args);
     }
 
     let cfg = config::Config::from_env()?;
@@ -90,7 +95,7 @@ async fn run(cli: Cli) -> Result<()> {
         Commands::Config => {
             client.print_config();
         }
-        Commands::Completions { .. } => unreachable!(),
+        Commands::Completions { .. } | Commands::Schema(_) => unreachable!(),
     }
 
     Ok(())

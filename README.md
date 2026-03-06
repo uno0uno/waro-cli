@@ -52,6 +52,11 @@ waro menu modifiers
 # Table output
 waro --output table sales list --fields id,status,total --limit 10
 
+# Inspect endpoint schema (useful for AI agents — no API key needed)
+waro schema
+waro schema sales list
+waro schema sales detail | jq '.params[] | select(.required == true)'
+
 # Auto-paginate (NDJSON output, one object per line)
 waro sales list --all --fields id,status,total
 waro menu products --all | wc -l

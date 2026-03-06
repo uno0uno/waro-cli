@@ -16,6 +16,20 @@ cargo build --release
 - Pagination: use `--limit 50 --offset N` to page through results
 - Default timezone is `America/Bogota` — override with `--timezone America/Mexico_City` etc.
 
+## Schema Introspection (start here)
+
+```bash
+# Discover all endpoints and their params (no API key needed)
+waro schema
+
+# Inspect a specific endpoint before calling it
+waro schema sales list
+waro schema sales detail
+
+# Find required params before calling
+waro schema sales detail | jq '.params[] | select(.required == true)'
+```
+
 ## Canonical Examples
 
 ```bash
