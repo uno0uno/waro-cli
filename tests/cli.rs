@@ -1,6 +1,7 @@
 use serde_json::json;
 use std::sync::Mutex;
 use waro_cli::output::apply_fields;
+use waro_cli::validate::{validate_date, validate_enum, validate_uuid};
 
 /// Mutex to serialize tests that mutate environment variables.
 static ENV_MUTEX: Mutex<()> = Mutex::new(());
@@ -72,4 +73,93 @@ fn config_uses_default_api_url_when_not_set() {
     assert_eq!(config.api_key, "waro_sk_test");
 
     std::env::remove_var("WARO_API_KEY");
+}
+
+// ── validate_uuid ─────────────────────────────────────────────────────────────
+
+#[test]
+fn validate_uuid_accepts_valid() {
+    assert!(validate_uuid("id", "550e8400-e29b-41d4-a716-446655440000").is_ok());
+}
+
+#[test]
+fn validate_uuid_rejects_path_traversal() {
+    let err = validate_uuid("id", "../etc/passwd")
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("path traversal"));
+}
+
+#[test]
+fn validate_uuid_rejects_null_byte() {
+    let err = validate_uuid("id", "550e8400-e29b-41d4\x00-a716-446655440000")
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("null bytes"));
+}
+
+#[test]
+fn validate_uuid_rejects_malformed() {
+    let err = validate_uuid("id", "not-a-uuid").unwrap_err().to_string();
+    assert!(err.contains("UUID format"));
+}
+
+#[test]
+fn validate_uuid_rejects_query_param() {
+    let err = validate_uuid("id", "550e8400-e29b-41d4-a716-446655440000?admin=1")
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("query parameters"));
+}
+
+// ── validate_date ─────────────────────────────────────────────────────────────
+
+#[test]
+fn validate_date_accepts_valid() {
+    assert!(validate_date("date-from", "2026-03-01").is_ok());
+}
+
+#[test]
+fn validate_date_rejects_crlf() {
+    let err = validate_date("date-from", "2026-03-01\r\nX-Bad: header")
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("newline"));
+}
+
+#[test]
+fn validate_date_rejects_wrong_format() {
+    let err = validate_date("date-from", "01/03/2026")
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("YYYY-MM-DD"));
+}
+
+#[test]
+fn validate_date_rejects_invalid_month() {
+    let err = validate_date("date-from", "2026-13-01")
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("YYYY-MM-DD"));
+}
+
+// ── validate_enum ─────────────────────────────────────────────────────────────
+
+#[test]
+fn validate_enum_accepts_valid() {
+    assert!(validate_enum(
+        "status",
+        "completed",
+        &["completed", "cancelled", "pending"]
+    )
+    .is_ok());
+}
+
+#[test]
+fn validate_enum_rejects_unknown() {
+    let err = validate_enum("status", "unknown", &["completed", "cancelled", "pending"])
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("not allowed"));
+    assert!(err.contains("completed"));
 }

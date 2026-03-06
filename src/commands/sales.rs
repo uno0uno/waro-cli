@@ -1,6 +1,7 @@
 use crate::client::WaroClient;
 use crate::output;
 use crate::pagination;
+use crate::validate;
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use serde_json::json;
@@ -129,6 +130,21 @@ async fn list(
     format: &str,
     fields: Option<String>,
 ) -> Result<()> {
+    // Validate inputs before any API call
+    if let Some(ref v) = a.date_from {
+        validate::validate_date("date-from", v)?;
+    }
+    if let Some(ref v) = a.date_to {
+        validate::validate_date("date-to", v)?;
+    }
+    if let Some(ref v) = a.status {
+        validate::validate_enum("status", v, &["completed", "cancelled", "pending"])?;
+    }
+    if let Some(ref v) = a.payment_method {
+        validate::validate_enum("payment-method", v, &["cash", "card", "digital"])?;
+    }
+    validate::validate_enum("sort-direction", &a.sort_direction, &["asc", "desc"])?;
+
     // Filters shared by single-page and --all modes
     let filters = json!({
         "paymentMethod": a.payment_method,
@@ -174,6 +190,21 @@ async fn metrics(
     format: &str,
     fields: Option<String>,
 ) -> Result<()> {
+    // Validate inputs before any API call
+    if let Some(ref v) = a.date_from {
+        validate::validate_date("date-from", v)?;
+    }
+    if let Some(ref v) = a.date_to {
+        validate::validate_date("date-to", v)?;
+    }
+    if let Some(ref v) = a.group_by {
+        validate::validate_enum(
+            "group-by",
+            v,
+            &["date", "weekday", "hour", "product", "payment", "ticket"],
+        )?;
+    }
+
     let body = json!({
         "dateFrom": a.date_from,
         "dateTo": a.date_to,
@@ -199,6 +230,9 @@ async fn detail(
     format: &str,
     fields: Option<String>,
 ) -> Result<()> {
+    // Validate inputs before any API call
+    validate::validate_uuid("order-id", &a.order_id)?;
+
     let body = json!({ "orderId": a.order_id });
 
     if a.dry_run {

@@ -1,6 +1,7 @@
 use crate::client::WaroClient;
 use crate::output;
 use crate::pagination;
+use crate::validate;
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use serde_json::json;
@@ -117,6 +118,11 @@ async fn products(
     format: &str,
     fields: Option<String>,
 ) -> Result<()> {
+    // Validate inputs before any API call
+    if let Some(ref v) = a.category_id {
+        validate::validate_uuid("category-id", v)?;
+    }
+
     let filters = json!({
         "categoryId": a.category_id,
         "isAvailable": a.is_available,

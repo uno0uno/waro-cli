@@ -3,6 +3,7 @@ mod commands;
 mod config;
 mod output;
 mod pagination;
+mod validate;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
