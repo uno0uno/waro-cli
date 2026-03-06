@@ -1,10 +1,10 @@
+mod client;
 mod commands;
 mod config;
-mod client;
 mod output;
 
-use clap::{Parser, Subcommand};
 use anyhow::Result;
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
