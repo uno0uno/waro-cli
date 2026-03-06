@@ -55,7 +55,7 @@ fn config_errors_without_api_key() {
     let _guard = ENV_MUTEX.lock().unwrap();
     std::env::remove_var("WARO_API_KEY");
 
-    let result = waro_cli::config::Config::from_env();
+    let result = waro_cli::config::Config::load(None);
 
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
@@ -68,7 +68,7 @@ fn config_uses_default_api_url_when_not_set() {
     std::env::remove_var("WARO_API_URL");
     std::env::set_var("WARO_API_KEY", "waro_sk_test");
 
-    let config = waro_cli::config::Config::from_env().unwrap();
+    let config = waro_cli::config::Config::load(None).unwrap();
 
     assert_eq!(config.api_url, "https://api.warocol.com");
     assert_eq!(config.api_key, "waro_sk_test");

@@ -12,10 +12,6 @@ pub fn eprint_warning(msg: &str) {
     eprintln!("{} {}", "warn:".yellow().bold(), msg);
 }
 
-/// Print a green success message to stdout
-pub fn print_success(msg: &str) {
-    println!("{}", msg.green());
-}
 
 /// Apply field mask to a JSON value (object or array of objects)
 pub fn apply_fields(value: Value, fields: Option<&str>) -> Value {

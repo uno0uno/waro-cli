@@ -58,7 +58,7 @@ impl Spinner {
                     thread::sleep(Duration::from_millis(150));
                     frame_i += 1;
                     // Advance message every 8 frames (~1.2 s)
-                    if frame_i % 8 == 0 {
+                    if frame_i.is_multiple_of(8) {
                         msg_i += 1;
                     }
                 }

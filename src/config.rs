@@ -45,11 +45,6 @@ impl Config {
         Self::from_env_vars(None)
     }
 
-    /// Backwards-compatible alias used by existing tests.
-    pub fn from_env() -> Result<Self> {
-        Self::load(None)
-    }
-
     fn from_profile(name: &str) -> Result<Self> {
         let home = env::var("HOME").context("HOME env var not set")?;
         let path = format!("{}/.waro/config.toml", home);
