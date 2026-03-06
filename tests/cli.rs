@@ -70,7 +70,7 @@ fn config_uses_default_api_url_when_not_set() {
 
     let config = waro_cli::config::Config::load(None).unwrap();
 
-    assert_eq!(config.api_url, "https://api.warocol.com");
+    assert_eq!(config.api_url, "https://api.warolabs.com");
     assert_eq!(config.api_key, "waro_sk_test");
 
     std::env::remove_var("WARO_API_KEY");
@@ -198,7 +198,7 @@ api_key = "waro_sk_prod_test"
 
     // prod profile omits api_url — should get default
     let config_prod = Config::load(Some("prod")).unwrap();
-    assert_eq!(config_prod.api_url, "https://api.warocol.com");
+    assert_eq!(config_prod.api_url, "https://api.warolabs.com");
     assert_eq!(config_prod.api_key, "waro_sk_prod_test");
 
     std::env::remove_var("HOME");

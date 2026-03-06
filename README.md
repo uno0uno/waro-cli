@@ -29,7 +29,7 @@ cp .env.example .env
 
 Or export directly:
 ```bash
-export WARO_API_URL=https://api.warocol.com
+export WARO_API_URL=https://api.warolabs.com
 export WARO_API_KEY=waro_sk_your_key_here
 ```
 
@@ -93,11 +93,11 @@ Work with multiple environments (staging, production, local) using named profile
 ```toml
 # ~/.waro/config.toml
 [profiles.staging]
-api_url = "https://staging-api.warocol.com"
+api_url = "https://staging-api.warolabs.com"
 api_key  = "waro_sk_staging_xxx"
 
 [profiles.prod]
-api_url = "https://api.warocol.com"
+api_url = "https://api.warolabs.com"
 api_key  = "waro_sk_prod_xxx"
 ```
 

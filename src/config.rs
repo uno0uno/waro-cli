@@ -78,7 +78,7 @@ impl Config {
             api_url: profile
                 .api_url
                 .clone()
-                .unwrap_or_else(|| "https://api.warocol.com".to_string()),
+                .unwrap_or_else(|| "https://api.warolabs.com".to_string()),
             api_key,
             profile_name: Some(name.to_owned()),
         })
@@ -86,7 +86,7 @@ impl Config {
 
     fn from_env_vars(profile_name: Option<String>) -> Result<Self> {
         let api_url =
-            env::var("WARO_API_URL").unwrap_or_else(|_| "https://api.warocol.com".to_string());
+            env::var("WARO_API_URL").unwrap_or_else(|_| "https://api.warolabs.com".to_string());
 
         let api_key = env::var("WARO_API_KEY")
             .context("WARO_API_KEY env var is required. Set it in .env or export it.")?;
