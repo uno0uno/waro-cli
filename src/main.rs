@@ -24,6 +24,10 @@ struct Cli {
     /// Comma-separated fields to include in response (e.g. id,status,total)
     #[arg(long, global = true)]
     fields: Option<String>,
+
+    /// Disable colored output
+    #[arg(long, global = true)]
+    no_color: bool,
 }
 
 #[derive(Subcommand)]
@@ -37,10 +41,28 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
     dotenvy::dotenv().ok();
 
     let cli = Cli::parse();
+
+    // Disable colors if --no-color, NO_COLOR env var, or stdout is not a TTY
+    if cli.no_color || std::env::var_os("NO_COLOR").is_some() {
+        colored::control::set_override(false);
+    } else {
+        use std::io::IsTerminal;
+        if !std::io::stdout().is_terminal() {
+            colored::control::set_override(false);
+        }
+    }
+
+    if let Err(e) = run(cli).await {
+        output::eprint_error(&e.to_string());
+        std::process::exit(1);
+    }
+}
+
+async fn run(cli: Cli) -> Result<()> {
     let cfg = config::Config::from_env()?;
     let client = client::WaroClient::new(cfg);
 

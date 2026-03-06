@@ -1,5 +1,21 @@
 use anyhow::Result;
+use colored::Colorize;
 use serde_json::Value;
+
+/// Print a red error message to stderr
+pub fn eprint_error(msg: &str) {
+    eprintln!("{} {}", "error:".red().bold(), msg);
+}
+
+/// Print a yellow warning message to stderr
+pub fn eprint_warning(msg: &str) {
+    eprintln!("{} {}", "warn:".yellow().bold(), msg);
+}
+
+/// Print a green success message to stdout
+pub fn print_success(msg: &str) {
+    println!("{}", msg.green());
+}
 
 /// Apply field mask to a JSON value (object or array of objects)
 pub fn apply_fields(value: Value, fields: Option<&str>) -> Value {
