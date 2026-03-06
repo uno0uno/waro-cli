@@ -12,7 +12,6 @@ pub fn eprint_warning(msg: &str) {
     eprintln!("{} {}", "warn:".yellow().bold(), msg);
 }
 
-
 /// Apply field mask to a JSON value (object or array of objects)
 pub fn apply_fields(value: Value, fields: Option<&str>) -> Value {
     let Some(fields_str) = fields else {
