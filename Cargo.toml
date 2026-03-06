@@ -1,0 +1,28 @@
+[package]
+name = "waro-cli"
+version = "0.1.0"
+edition = "2021"
+description = "WaRo Colombia CLI — Developer tool for the WaRo public API"
+authors = ["WaRo Colombia <dev@warocol.com>"]
+license = "MIT"
+repository = "https://github.com/uno0uno/waro-cli"
+
+[[bin]]
+name = "waro"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive", "env"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+colored = "2"
+dotenvy = "0.15"
+tabled = "0.17"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
