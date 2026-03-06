@@ -31,6 +31,10 @@ struct Cli {
     /// Disable colored output
     #[arg(long, global = true)]
     no_color: bool,
+
+    /// Profile name from ~/.waro/config.toml
+    #[arg(long, global = true)]
+    profile: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -84,7 +88,7 @@ async fn run(cli: Cli) -> Result<()> {
         return commands::schema::run(args);
     }
 
-    let cfg = config::Config::from_env()?;
+    let cfg = config::Config::load(cli.profile.as_deref())?;
     let client = client::WaroClient::new(cfg);
 
     let out_format = cli.output.clone();

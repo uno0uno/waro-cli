@@ -92,6 +92,9 @@ impl WaroClient {
             "***".to_string()
         };
 
+        if let Some(ref profile) = self.config.profile_name {
+            println!("{} {}", "WARO_PROFILE :".bold(), profile);
+        }
         println!("{} {}", "WARO_API_URL :".bold(), self.config.api_url);
         println!("{} {}", "WARO_API_KEY :".bold(), key_preview.dimmed());
     }

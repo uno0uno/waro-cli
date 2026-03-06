@@ -1,5 +1,6 @@
 use serde_json::json;
 use std::sync::Mutex;
+use waro_cli::config::Config;
 use waro_cli::output::apply_fields;
 use waro_cli::validate::{validate_date, validate_enum, validate_uuid};
 
@@ -162,4 +163,91 @@ fn validate_enum_rejects_unknown() {
         .to_string();
     assert!(err.contains("not allowed"));
     assert!(err.contains("completed"));
+}
+
+// ── Config profile loading ────────────────────────────────────────────────────
+
+#[test]
+fn config_loads_profile_from_toml() {
+    let _guard = ENV_MUTEX.lock().unwrap();
+
+    // Write a temp config.toml under a temp HOME
+    let tmp = std::env::temp_dir().join("waro_test_home");
+    let waro_dir = tmp.join(".waro");
+    std::fs::create_dir_all(&waro_dir).unwrap();
+    std::fs::write(
+        waro_dir.join("config.toml"),
+        r#"
+[profiles.staging]
+api_url = "https://staging.example.com"
+api_key  = "waro_sk_staging_test"
+
+[profiles.prod]
+api_key = "waro_sk_prod_test"
+"#,
+    )
+    .unwrap();
+
+    std::env::set_var("HOME", tmp.to_str().unwrap());
+    std::env::remove_var("WARO_PROFILE");
+
+    let config = Config::load(Some("staging")).unwrap();
+    assert_eq!(config.api_url, "https://staging.example.com");
+    assert_eq!(config.api_key, "waro_sk_staging_test");
+    assert_eq!(config.profile_name.as_deref(), Some("staging"));
+
+    // prod profile omits api_url — should get default
+    let config_prod = Config::load(Some("prod")).unwrap();
+    assert_eq!(config_prod.api_url, "https://api.warocol.com");
+    assert_eq!(config_prod.api_key, "waro_sk_prod_test");
+
+    std::env::remove_var("HOME");
+}
+
+#[test]
+fn config_errors_on_missing_profile() {
+    let _guard = ENV_MUTEX.lock().unwrap();
+
+    let tmp = std::env::temp_dir().join("waro_test_home2");
+    let waro_dir = tmp.join(".waro");
+    std::fs::create_dir_all(&waro_dir).unwrap();
+    std::fs::write(
+        waro_dir.join("config.toml"),
+        "[profiles.prod]\napi_key = \"waro_sk_prod\"\n",
+    )
+    .unwrap();
+
+    std::env::set_var("HOME", tmp.to_str().unwrap());
+    std::env::remove_var("WARO_PROFILE");
+
+    let err = Config::load(Some("nonexistent")).unwrap_err().to_string();
+    assert!(err.contains("nonexistent"));
+    assert!(err.contains("not found"));
+
+    std::env::remove_var("HOME");
+}
+
+#[test]
+fn config_uses_waro_profile_env_var() {
+    let _guard = ENV_MUTEX.lock().unwrap();
+
+    let tmp = std::env::temp_dir().join("waro_test_home3");
+    let waro_dir = tmp.join(".waro");
+    std::fs::create_dir_all(&waro_dir).unwrap();
+    std::fs::write(
+        waro_dir.join("config.toml"),
+        "[profiles.local]\napi_key = \"waro_sk_local\"\napi_url = \"http://localhost:8000\"\n",
+    )
+    .unwrap();
+
+    std::env::set_var("HOME", tmp.to_str().unwrap());
+    std::env::set_var("WARO_PROFILE", "local");
+
+    let config = Config::load(None).unwrap();
+    assert_eq!(config.api_url, "http://localhost:8000");
+    assert_eq!(config.api_key, "waro_sk_local");
+    assert_eq!(config.profile_name.as_deref(), Some("local"));
+
+    std::env::remove_var("WARO_PROFILE");
+    std::env::remove_var("HOME");
 }

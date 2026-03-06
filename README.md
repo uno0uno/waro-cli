@@ -86,6 +86,32 @@ waro completions fish > ~/.config/fish/completions/waro.fish
 
 Supported shells: `bash`, `zsh`, `fish`, `powershell`, `elvish`
 
+## Profiles
+
+Work with multiple environments (staging, production, local) using named profiles:
+
+```toml
+# ~/.waro/config.toml
+[profiles.staging]
+api_url = "https://staging-api.warocol.com"
+api_key  = "waro_sk_staging_xxx"
+
+[profiles.prod]
+api_url = "https://api.warocol.com"
+api_key  = "waro_sk_prod_xxx"
+```
+
+```bash
+waro --profile staging sales list
+waro --profile prod sales metrics --group-by date
+
+# Or use an env var
+export WARO_PROFILE=staging
+waro sales list
+```
+
+If no profile is set, falls back to `WARO_API_KEY` / `WARO_API_URL` env vars (existing behaviour).
+
 ## Global flags
 
 | Flag | Description |
@@ -93,6 +119,7 @@ Supported shells: `bash`, `zsh`, `fish`, `powershell`, `elvish`
 | `--output json\|table` | Output format (default: json) |
 | `--fields id,name,...` | Return only these fields (reduces response size) |
 | `--no-color` | Disable colored output |
+| `--profile <name>` | Use a named profile from `~/.waro/config.toml` |
 
 ## Authentication
 
