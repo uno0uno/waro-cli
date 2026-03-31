@@ -42,6 +42,8 @@ struct Cli {
 enum Commands {
     /// Sales / orders commands
     Sales(commands::sales::SalesArgs),
+    /// Customer commands
+    Customers(commands::customers::CustomersArgs),
     /// Menu commands (products, recipes, modifiers)
     Menu(commands::menu::MenuArgs),
     /// Print current config (API URL, key prefix)
@@ -99,6 +101,9 @@ async fn run(cli: Cli) -> Result<()> {
 
     match cli.command {
         Commands::Sales(args) => commands::sales::run(args, &client, &out_format, fields).await?,
+        Commands::Customers(args) => {
+            commands::customers::run(args, &client, &out_format, fields).await?
+        }
         Commands::Menu(args) => commands::menu::run(args, &client, &out_format, fields).await?,
         Commands::Config => {
             client.print_config();
