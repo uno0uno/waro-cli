@@ -157,7 +157,12 @@ async fn list(
     validate::validate_enum(
         "sort-field",
         &a.sort_field,
-        &["total_spent", "order_count", "last_order_date", "avg_ticket"],
+        &[
+            "total_spent",
+            "order_count",
+            "last_order_date",
+            "avg_ticket",
+        ],
     )?;
     validate::validate_enum("sort-direction", &a.sort_direction, &["asc", "desc"])?;
 
