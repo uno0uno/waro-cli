@@ -46,6 +46,12 @@ enum Commands {
     Customers(commands::customers::CustomersArgs),
     /// Menu commands (products, recipes, modifiers)
     Menu(commands::menu::MenuArgs),
+    /// Analytics commands (menu BCG, food cost, alerts, data quality)
+    Analytics(commands::analytics::AnalyticsArgs),
+    /// Financial analysis commands (product margin, cost, profitability)
+    Financial(commands::financial::FinancialArgs),
+    /// WaRo loyalty commands (estimate, balances, customer wallet)
+    Waros(commands::waros::WarosArgs),
     /// Print current config (API URL, key prefix)
     Config,
     /// Generate shell completion script
@@ -105,6 +111,13 @@ async fn run(cli: Cli) -> Result<()> {
             commands::customers::run(args, &client, &out_format, fields).await?
         }
         Commands::Menu(args) => commands::menu::run(args, &client, &out_format, fields).await?,
+        Commands::Analytics(args) => {
+            commands::analytics::run(args, &client, &out_format, fields).await?
+        }
+        Commands::Financial(args) => {
+            commands::financial::run(args, &client, &out_format, fields).await?
+        }
+        Commands::Waros(args) => commands::waros::run(args, &client, &out_format, fields).await?,
         Commands::Config => {
             client.print_config();
         }

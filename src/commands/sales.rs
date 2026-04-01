@@ -92,6 +92,19 @@ pub struct MetricsArgs {
     #[arg(long, default_value = "America/Bogota")]
     timezone: String,
 
+    /// Top N products to return (1-100, only used with --group-by product)
+    #[arg(long, default_value = "20")]
+    limit: u32,
+
+    /// Sort for product grouping: quantity | revenue (only used with --group-by product)
+    #[arg(long, default_value = "quantity")]
+    sort_by: String,
+
+    /// Custom price bins for ticket distribution, comma-separated integers
+    /// e.g. --ranges 0,5000,15000,30000 (only used with --group-by ticket)
+    #[arg(long)]
+    ranges: Option<String>,
+
     /// Validate request locally without calling the API
     #[arg(long)]
     dry_run: bool,
@@ -207,12 +220,32 @@ async fn metrics(
             &["date", "weekday", "hour", "product", "payment", "ticket"],
         )?;
     }
+    validate::validate_enum("sort-by", &a.sort_by, &["quantity", "revenue"])?;
+
+    // Parse --ranges into a JSON array of integers (only meaningful for group-by ticket)
+    let ranges_value: serde_json::Value = match &a.ranges {
+        None => serde_json::Value::Null,
+        Some(s) => {
+            let parts: Result<Vec<u64>, _> =
+                s.split(',').map(|p| p.trim().parse::<u64>()).collect();
+            match parts {
+                Ok(v) => serde_json::json!(v),
+                Err(_) => anyhow::bail!(
+                    "--ranges must be comma-separated integers (e.g. 0,5000,15000), got: '{}'",
+                    s
+                ),
+            }
+        }
+    };
 
     let body = json!({
         "dateFrom": a.date_from,
         "dateTo": a.date_to,
         "groupBy": a.group_by,
         "timezone": a.timezone,
+        "limit": a.limit,
+        "sortBy": a.sort_by,
+        "ranges": ranges_value,
     });
 
     if a.dry_run {

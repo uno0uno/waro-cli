@@ -4,10 +4,11 @@ use serde_json::{json, Value};
 
 #[derive(Args)]
 pub struct SchemaArgs {
-    /// Command group: sales | customers | menu (omit to list all schemas)
+    /// Command group: sales | customers | menu | analytics | financial | waros (omit to list all)
     group: Option<String>,
 
-    /// Subcommand: list | metrics | detail | products | recipes | modifiers
+    /// Subcommand: list | metrics | detail | products | recipes | modifiers |
+    ///             menu | food-cost | alerts | data-quality | estimate | balances | customer
     subcommand: Option<String>,
 }
 
@@ -40,7 +41,12 @@ pub fn run(args: SchemaArgs) -> Result<()> {
 }
 
 fn valid_commands() -> &'static str {
-    "sales list, sales metrics, sales detail, customers list, customers detail, customers metrics, menu products, menu recipes, menu modifiers"
+    "sales list, sales metrics, sales detail, \
+     customers list, customers detail, customers metrics, \
+     menu products, menu recipes, menu modifiers, \
+     analytics menu, analytics food-cost, analytics alerts, analytics data-quality, \
+     financial products, \
+     waros estimate, waros balances, waros customer"
 }
 
 fn all_schemas() -> Value {
@@ -54,6 +60,14 @@ fn all_schemas() -> Value {
         schema_for("menu", "products").unwrap(),
         schema_for("menu", "recipes").unwrap(),
         schema_for("menu", "modifiers").unwrap(),
+        schema_for("analytics", "menu").unwrap(),
+        schema_for("analytics", "food-cost").unwrap(),
+        schema_for("analytics", "alerts").unwrap(),
+        schema_for("analytics", "data-quality").unwrap(),
+        schema_for("financial", "products").unwrap(),
+        schema_for("waros", "estimate").unwrap(),
+        schema_for("waros", "balances").unwrap(),
+        schema_for("waros", "customer").unwrap(),
     ])
 }
 
@@ -85,10 +99,13 @@ fn schema_for(group: &str, subcommand: &str) -> Option<Value> {
             "scope": "orders:read",
             "paginates": false,
             "params": [
-                { "name": "date_from", "type": "string", "default": null,             "required": false, "description": "Start date YYYY-MM-DD" },
-                { "name": "date_to",   "type": "string", "default": null,             "required": false, "description": "End date YYYY-MM-DD" },
-                { "name": "group_by",  "type": "string", "default": null,             "required": false, "description": "Aggregation: date | weekday | hour | product | payment | ticket" },
-                { "name": "timezone",  "type": "string", "default": "America/Bogota", "required": false, "description": "IANA timezone" }
+                { "name": "date_from", "type": "string",  "default": null,             "required": false, "description": "Start date YYYY-MM-DD" },
+                { "name": "date_to",   "type": "string",  "default": null,             "required": false, "description": "End date YYYY-MM-DD" },
+                { "name": "group_by",  "type": "string",  "default": null,             "required": false, "description": "Aggregation: date | weekday | hour | product | payment | ticket" },
+                { "name": "timezone",  "type": "string",  "default": "America/Bogota", "required": false, "description": "IANA timezone" },
+                { "name": "limit",     "type": "integer", "default": 20,               "required": false, "description": "Top N products (1-100, used with group_by=product)" },
+                { "name": "sort_by",   "type": "string",  "default": "quantity",        "required": false, "description": "Sort for product grouping: quantity | revenue" },
+                { "name": "ranges",    "type": "string",  "default": null,             "required": false, "description": "Comma-separated integers for ticket bins (used with group_by=ticket)" }
             ]
         })),
         ("sales", "detail") => Some(json!({
@@ -157,7 +174,7 @@ fn schema_for(group: &str, subcommand: &str) -> Option<Value> {
                 { "name": "date_from",      "type": "string",  "default": null,             "required": false, "description": "Start date YYYY-MM-DD" },
                 { "name": "date_to",        "type": "string",  "default": null,             "required": false, "description": "End date YYYY-MM-DD" },
                 { "name": "timezone",       "type": "string",  "default": "America/Bogota", "required": false, "description": "IANA timezone" },
-                { "name": "sort_field",     "type": "string",  "default": "total_spent",    "required": false, "description": "total_spent|order_count|last_order_date|avg_ticket" },
+                { "name": "sort_field",     "type": "string",  "default": "total_spent",    "required": false, "description": "total_spent|order_count|last_order_date|avg_ticket|waros_balance" },
                 { "name": "sort_direction", "type": "string",  "default": "desc",           "required": false, "description": "asc|desc" }
             ]
         })),
@@ -187,6 +204,91 @@ fn schema_for(group: &str, subcommand: &str) -> Option<Value> {
                 { "name": "date_to",   "type": "string", "default": null,             "required": false, "description": "End date YYYY-MM-DD" },
                 { "name": "group_by",  "type": "string", "default": null,             "required": false, "description": "Time series: date|weekday|month" },
                 { "name": "timezone",  "type": "string", "default": "America/Bogota", "required": false, "description": "IANA timezone" }
+            ]
+        })),
+        ("analytics", "menu") => Some(json!({
+            "command": "analytics menu",
+            "method": "POST",
+            "path": "/v1/analytics/menu-analysis",
+            "scope": "analytics:read",
+            "paginates": false,
+            "params": [
+                { "name": "date_from", "type": "string",  "default": null, "required": false, "description": "Start date YYYY-MM-DD" },
+                { "name": "date_to",   "type": "string",  "default": null, "required": false, "description": "End date YYYY-MM-DD" },
+                { "name": "limit",     "type": "integer", "default": 10,   "required": false, "description": "Max products to return (1-100)" }
+            ]
+        })),
+        ("analytics", "food-cost") => Some(json!({
+            "command": "analytics food-cost",
+            "method": "POST",
+            "path": "/v1/analytics/food-cost",
+            "scope": "analytics:read",
+            "paginates": false,
+            "params": [
+                { "name": "date_from", "type": "string", "default": null, "required": false, "description": "Start date YYYY-MM-DD" },
+                { "name": "date_to",   "type": "string", "default": null, "required": false, "description": "End date YYYY-MM-DD" }
+            ]
+        })),
+        ("analytics", "alerts") => Some(json!({
+            "command": "analytics alerts",
+            "method": "POST",
+            "path": "/v1/analytics/alerts",
+            "scope": "analytics:read",
+            "paginates": false,
+            "params": [
+                { "name": "limit", "type": "integer", "default": 10, "required": false, "description": "Max alerts to return (1-100)" }
+            ]
+        })),
+        ("analytics", "data-quality") => Some(json!({
+            "command": "analytics data-quality",
+            "method": "POST",
+            "path": "/v1/analytics/data-quality",
+            "scope": "analytics:read",
+            "paginates": false,
+            "params": []
+        })),
+        ("financial", "products") => Some(json!({
+            "command": "financial products",
+            "method": "POST",
+            "path": "/v1/financial/products",
+            "scope": "financial:read",
+            "paginates": false,
+            "params": [
+                { "name": "period",     "type": "integer", "default": 365,      "required": false, "description": "Analysis period in days (1-730)" },
+                { "name": "sort_by",    "type": "string",  "default": "margin", "required": false, "description": "Sort field: margin | revenue | cost | quantity" },
+                { "name": "min_margin", "type": "integer", "default": null,     "required": false, "description": "Minimum margin percentage filter" },
+                { "name": "category",   "type": "string",  "default": null,     "required": false, "description": "Filter by category name" }
+            ]
+        })),
+        ("waros", "estimate") => Some(json!({
+            "command": "waros estimate",
+            "method": "POST",
+            "path": "/v1/waros/estimate",
+            "scope": "waros:read",
+            "paginates": false,
+            "params": [
+                { "name": "total",       "type": "number", "default": null, "required": true,  "description": "Purchase total amount (>= 0)" },
+                { "name": "customer_id", "type": "string", "default": null, "required": false, "description": "Customer UUID (optional, for personalized estimate)" }
+            ]
+        })),
+        ("waros", "balances") => Some(json!({
+            "command": "waros balances",
+            "method": "POST",
+            "path": "/v1/waros/balances",
+            "scope": "waros:read",
+            "paginates": false,
+            "params": [
+                { "name": "profile_ids", "type": "string", "default": null, "required": true, "description": "Comma-separated customer profile UUIDs" }
+            ]
+        })),
+        ("waros", "customer") => Some(json!({
+            "command": "waros customer",
+            "method": "POST",
+            "path": "/v1/waros/customer-summary",
+            "scope": "waros:read",
+            "paginates": false,
+            "params": [
+                { "name": "profile_id", "type": "string", "default": null, "required": true, "description": "Customer profile UUID" }
             ]
         })),
         _ => None,

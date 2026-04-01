@@ -55,7 +55,7 @@ pub struct ListArgs {
     #[arg(long, default_value = "America/Bogota")]
     timezone: String,
 
-    /// Sort field: total_spent | order_count | last_order_date | avg_ticket
+    /// Sort field: total_spent | order_count | last_order_date | avg_ticket | waros_balance
     #[arg(long, default_value = "total_spent")]
     sort_field: String,
 
@@ -162,6 +162,7 @@ async fn list(
             "order_count",
             "last_order_date",
             "avg_ticket",
+            "waros_balance",
         ],
     )?;
     validate::validate_enum("sort-direction", &a.sort_direction, &["asc", "desc"])?;
