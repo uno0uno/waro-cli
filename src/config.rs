@@ -42,6 +42,19 @@ impl Config {
             return Self::from_profile(name);
         }
 
+        // Auto-load "default" profile from ~/.waro/config.toml if it exists
+        let home = env::var("HOME").unwrap_or_default();
+        let path = format!("{}/.waro/config.toml", home);
+        if std::path::Path::new(&path).exists() {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(toml) = toml::from_str::<TomlConfig>(&content) {
+                    if toml.profiles.contains_key("default") {
+                        return Self::from_profile("default");
+                    }
+                }
+            }
+        }
+
         Self::from_env_vars(None)
     }
 
