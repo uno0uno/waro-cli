@@ -19,6 +19,8 @@ pub enum CustomersCommands {
     List(ListArgs),
     /// Get full profile, order history and waros summary for a customer
     Detail(DetailArgs),
+    /// Get aggregate customer analytics with optional time-series grouping
+    Metrics(MetricsArgs),
 }
 
 // ── list ──────────────────────────────────────────────────────────────────────
@@ -60,6 +62,31 @@ pub struct ListArgs {
     /// Sort direction: asc | desc
     #[arg(long, default_value = "desc")]
     sort_direction: String,
+
+    /// Validate request locally without calling the API
+    #[arg(long)]
+    dry_run: bool,
+}
+
+// ── metrics ───────────────────────────────────────────────────────────────────
+
+#[derive(Args)]
+pub struct MetricsArgs {
+    /// Start date YYYY-MM-DD
+    #[arg(long)]
+    date_from: Option<String>,
+
+    /// End date YYYY-MM-DD
+    #[arg(long)]
+    date_to: Option<String>,
+
+    /// Group by: date | weekday | month — enables time series in response
+    #[arg(long)]
+    group_by: Option<String>,
+
+    /// Timezone (default: America/Bogota)
+    #[arg(long, default_value = "America/Bogota")]
+    timezone: String,
 
     /// Validate request locally without calling the API
     #[arg(long)]
@@ -110,6 +137,7 @@ pub async fn run(
     match args.command {
         CustomersCommands::List(a) => list(a, client, format, fields).await,
         CustomersCommands::Detail(a) => detail(a, client, format, fields).await,
+        CustomersCommands::Metrics(a) => metrics(a, client, format, fields).await,
     }
 }
 
@@ -204,6 +232,43 @@ async fn detail(
 
     let sp = Spinner::start();
     let resp = client.post("/v1/customers/detail", body).await?;
+    sp.stop();
+    let resp = output::apply_fields(resp, fields.as_deref());
+    output::print(&resp, format)?;
+    Ok(())
+}
+
+async fn metrics(
+    a: MetricsArgs,
+    client: &WaroClient,
+    format: &str,
+    fields: Option<String>,
+) -> Result<()> {
+    if let Some(ref v) = a.date_from {
+        validate::validate_date("date-from", v)?;
+    }
+    if let Some(ref v) = a.date_to {
+        validate::validate_date("date-to", v)?;
+    }
+    if let Some(ref v) = a.group_by {
+        validate::validate_enum("group-by", v, &["date", "weekday", "month"])?;
+    }
+
+    let body = json!({
+        "dateFrom": a.date_from,
+        "dateTo": a.date_to,
+        "groupBy": a.group_by,
+        "timezone": a.timezone,
+    });
+
+    if a.dry_run {
+        println!("DRY RUN — POST /v1/customers/metrics");
+        println!("{}", serde_json::to_string_pretty(&body)?);
+        return Ok(());
+    }
+
+    let sp = Spinner::start();
+    let resp = client.post("/v1/customers/metrics", body).await?;
     sp.stop();
     let resp = output::apply_fields(resp, fields.as_deref());
     output::print(&resp, format)?;
