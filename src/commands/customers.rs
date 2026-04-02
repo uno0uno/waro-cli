@@ -362,10 +362,14 @@ fn print_customers_comparison(value: &serde_json::Value) -> Result<()> {
         }
     };
 
-    let prev = value
-        .get("comparison")
-        .and_then(|c| c.as_object())
-        .and_then(|m| m.values().next());
+    // comparison.{previous_period|previous_year|custom} holds historical values;
+    // change percentages are siblings of that nested key in the comparison object.
+    let comparison = value.get("comparison");
+    let prev = comparison.and_then(|c| {
+        c.get("previous_period")
+            .or_else(|| c.get("previous_year"))
+            .or_else(|| c.get("custom"))
+    });
 
     let get_f64 = |obj: &serde_json::Value, key: &str| -> Option<f64> {
         obj.get(key).and_then(|v| v.as_f64())
@@ -381,18 +385,17 @@ fn print_customers_comparison(value: &serde_json::Value) -> Result<()> {
     let prev_ticket = prev.and_then(|p| get_f64(p, "avg_ticket"));
     let prev_orders = prev.and_then(|p| get_f64(p, "avg_orders_per_customer"));
 
-    let revenue_pct = get_f64(summary, "total_revenue_change_pct");
-    let customers_pct = get_f64(summary, "total_customers_change_pct");
-    let ticket_pct =
-        get_f64(summary, "avg_ticket_change_pct").or_else(|| match (cur_ticket, prev_ticket) {
-            (Some(c), Some(p)) if p != 0.0 => Some((c - p) / p * 100.0),
-            _ => None,
-        });
-    let orders_pct =
-        get_f64(summary, "avg_orders_change_pct").or_else(|| match (cur_orders, prev_orders) {
-            (Some(c), Some(p)) if p != 0.0 => Some((c - p) / p * 100.0),
-            _ => None,
-        });
+    // Change percentages live in comparison, not in summary
+    let revenue_pct = comparison.and_then(|c| get_f64(c, "total_revenue_change_pct"));
+    let customers_pct = comparison.and_then(|c| get_f64(c, "total_customers_change_pct"));
+    let ticket_pct = match (cur_ticket, prev_ticket) {
+        (Some(c), Some(p)) if p != 0.0 => Some((c - p) / p * 100.0),
+        _ => None,
+    };
+    let orders_pct = match (cur_orders, prev_orders) {
+        (Some(c), Some(p)) if p != 0.0 => Some((c - p) / p * 100.0),
+        _ => None,
+    };
 
     let fmt_cop = |v: Option<f64>| -> String {
         v.map(|f| format!("${}", f as i64))

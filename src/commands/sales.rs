@@ -61,7 +61,7 @@ pub struct ListArgs {
     #[arg(long, default_value = "America/Bogota")]
     timezone: String,
 
-    /// Sort field
+    /// Sort field: order_date | order_number | total_amount | customer_name | payment_method
     #[arg(long, default_value = "order_date")]
     sort_field: String,
 
@@ -163,6 +163,17 @@ async fn list(
     if let Some(ref v) = a.payment_method {
         validate::validate_enum("payment-method", v, &["cash", "card", "digital"])?;
     }
+    validate::validate_enum(
+        "sort-field",
+        &a.sort_field,
+        &[
+            "order_date",
+            "order_number",
+            "total_amount",
+            "customer_name",
+            "payment_method",
+        ],
+    )?;
     validate::validate_enum("sort-direction", &a.sort_direction, &["asc", "desc"])?;
 
     // Filters shared by single-page and --all modes
@@ -304,13 +315,14 @@ fn print_sales_comparison(value: &serde_json::Value) -> Result<()> {
         }
     };
 
-    let prev = data
-        .get("comparison")
-        .and_then(|c| c.as_object())
-        .and_then(|m| {
-            // API returns the period key dynamically; grab the first value
-            m.values().next()
-        });
+    // comparison.{previous_period|previous_year|custom} holds historical values;
+    // change percentages are siblings of that nested key inside comparison.
+    let comparison = data.get("comparison");
+    let prev = comparison.and_then(|c| {
+        c.get("previous_period")
+            .or_else(|| c.get("previous_year"))
+            .or_else(|| c.get("custom"))
+    });
 
     let get_f64 = |obj: &serde_json::Value, key: &str| -> Option<f64> {
         obj.get(key).and_then(|v| v.as_f64())
@@ -324,14 +336,13 @@ fn print_sales_comparison(value: &serde_json::Value) -> Result<()> {
     let prev_orders = prev.and_then(|p| get_f64(p, "totalOrders"));
     let prev_ticket = prev.and_then(|p| get_f64(p, "avgTicket"));
 
-    let sales_pct = get_f64(data, "totalSales_change_pct");
-    let ticket_pct = get_f64(data, "avgTicket_change_pct");
-    // Compute orders delta client-side if not in response
-    let orders_pct =
-        get_f64(data, "totalOrders_change_pct").or_else(|| match (cur_orders, prev_orders) {
-            (Some(c), Some(p)) if p != 0.0 => Some((c - p) / p * 100.0),
-            _ => None,
-        });
+    // Change percentages live in comparison, not in data directly
+    let sales_pct = comparison.and_then(|c| get_f64(c, "totalSales_change_pct"));
+    let ticket_pct = comparison.and_then(|c| get_f64(c, "avgTicket_change_pct"));
+    let orders_pct = match (cur_orders, prev_orders) {
+        (Some(c), Some(p)) if p != 0.0 => Some((c - p) / p * 100.0),
+        _ => None,
+    };
 
     let fmt_cop = |v: Option<f64>| -> String {
         v.map(|f| format!("${}", f as i64))

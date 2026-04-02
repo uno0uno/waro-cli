@@ -84,14 +84,27 @@ fn print_fields(value: &Value) -> Result<()> {
     Ok(())
 }
 
+/// Truncate an ISO 8601 datetime string to "YYYY-MM-DD HH:MM".
+/// Returns None if the string doesn't look like a datetime.
+fn truncate_datetime(s: &str) -> Option<String> {
+    // Must be at least "YYYY-MM-DDTHH:MM" = 16 chars and contain 'T'
+    if s.len() >= 16 && s.chars().nth(10) == Some('T') {
+        let date = &s[..10];
+        let time = &s[11..16];
+        Some(format!("{} {}", date, time))
+    } else {
+        None
+    }
+}
+
 /// Render a single JSON value as a readable table cell string.
-/// - Strings/numbers/bools → as-is
+/// - Strings/numbers/bools → as-is (datetime strings are truncated to YYYY-MM-DD HH:MM)
 /// - Null → ""
 /// - Arrays → "[N]" (or "" if empty)
 /// - Objects → prefer "name" or "title" field; otherwise comma-list of scalar fields
 fn cell_value(v: &Value) -> String {
     match v {
-        Value::String(s) => s.clone(),
+        Value::String(s) => truncate_datetime(s).unwrap_or_else(|| s.clone()),
         Value::Null => String::new(),
         Value::Bool(b) => b.to_string(),
         Value::Number(n) => n.to_string(),
@@ -136,8 +149,9 @@ fn cell_value(v: &Value) -> String {
 /// 3. `data` key is an object → look for a nested array in common keys
 ///    (`menu_items`, `alerts`, `products`, `orders`, `items`, `rows`)
 /// 4. `data` key is a flat scalar-only object → show as a single row
-/// 5. Top-level known array keys: `top_customers`, `products`, `items`,
-///    `results`, `records`, `rows`
+/// 5. Top-level known array keys: `series`, `top_customers`, `products`, `items`,
+///    `results`, `records`, `rows`  (`series` checked first so group-by time series
+///    wins over `top_customers` when both are present)
 /// 6. `balances` key is a map of id → value → convert to [{profile_id, balance}] rows
 /// 7. Fallback: treat the whole object as a single row
 fn find_rows(value: &Value) -> Vec<Value> {
@@ -169,7 +183,10 @@ fn find_rows(value: &Value) -> Vec<Value> {
             }
 
             // 3. top-level known array keys
+            // `series` before `top_customers` so time-series group-by results
+            // take priority over the top_customers summary list
             for key in &[
+                "series",
                 "top_customers",
                 "products",
                 "items",
@@ -222,8 +239,8 @@ fn print_table(value: &Value) -> Result<()> {
     };
 
     if headers.is_empty() {
-        // No object rows — fall back to pretty JSON
-        println!("{}", serde_json::to_string_pretty(value)?);
+        // All rows are empty objects — field filter matched nothing
+        eprint_warning("no fields matched. Use --output fields to see available field names.");
         return Ok(());
     }
 
