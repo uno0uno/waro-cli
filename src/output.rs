@@ -30,7 +30,7 @@ pub fn apply_fields(value: Value, fields: Option<&str>) -> Value {
                 .collect(),
         ),
         Value::Object(ref map) if map.get("data").is_some_and(|v| v.is_array()) => {
-            // Paginated response — filter items inside data, keep wrapper intact
+            // Paginated response: {data: [...]} — filter items inside data array
             let mut out = map.clone();
             if let Some(Value::Array(arr)) = map.get("data") {
                 let filtered = arr
@@ -40,6 +40,34 @@ pub fn apply_fields(value: Value, fields: Option<&str>) -> Value {
                 out.insert("data".to_string(), Value::Array(filtered));
             }
             Value::Object(out)
+        }
+        Value::Object(ref map) if map.get("data").is_some_and(|v| v.is_object()) => {
+            // Nested response: {data: {alerts/menu_items/products/...: [...]}}
+            // Filter items inside the first known nested array key
+            if let Some(Value::Object(data_obj)) = map.get("data") {
+                for key in &[
+                    "menu_items",
+                    "alerts",
+                    "products",
+                    "orders",
+                    "items",
+                    "rows",
+                ] {
+                    if let Some(Value::Array(arr)) = data_obj.get(*key) {
+                        let filtered: Vec<Value> = arr
+                            .iter()
+                            .map(|item| filter_object(item.clone(), &keys))
+                            .collect();
+                        let mut new_data = data_obj.clone();
+                        new_data.insert(key.to_string(), Value::Array(filtered));
+                        let mut out = map.clone();
+                        out.insert("data".to_string(), Value::Object(new_data));
+                        return Value::Object(out);
+                    }
+                }
+            }
+            // data is a flat object — filter the whole response top-level
+            filter_object(value, &keys)
         }
         obj @ Value::Object(_) => filter_object(obj, &keys),
         other => other,
@@ -116,9 +144,17 @@ fn cell_value(v: &Value) -> String {
             }
         }
         Value::Object(map) => {
-            // Prefer a human-readable label field
+            // Prefer a human-readable label field (skip empty strings)
             for label_key in &["name", "title", "label"] {
                 if let Some(Value::String(s)) = map.get(*label_key) {
+                    if !s.is_empty() {
+                        return s.clone();
+                    }
+                }
+            }
+            // Secondary: phone as a short identifier
+            if let Some(Value::String(s)) = map.get("phone") {
+                if !s.is_empty() {
                     return s.clone();
                 }
             }

@@ -153,6 +153,7 @@ async fn products(
             filters,
             a.limit,
             fields.as_deref(),
+            format,
         )
         .await;
     }
@@ -199,6 +200,7 @@ async fn recipes(
             filters,
             a.limit,
             fields.as_deref(),
+            format,
         )
         .await;
     }
@@ -243,6 +245,7 @@ async fn modifiers(
             filters,
             a.limit,
             fields.as_deref(),
+            format,
         )
         .await;
     }
