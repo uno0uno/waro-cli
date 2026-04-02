@@ -1,6 +1,7 @@
 use anyhow::Result;
 use colored::Colorize;
 use serde_json::Value;
+use tabled::{builder::Builder, settings::Style};
 
 /// Print a red error message to stderr
 pub fn eprint_error(msg: &str) {
@@ -54,35 +55,50 @@ pub fn print(value: &Value, format: &str) -> Result<()> {
 }
 
 fn print_table(value: &Value) -> Result<()> {
-    // Flatten to array
+    // Attempt to "unwrap" paginated or list-wrapped responses
     let rows = match value {
         Value::Array(arr) => arr.clone(),
-        obj @ Value::Object(_) => vec![obj.clone()],
+        Value::Object(map) => {
+            let mut found_data = None;
+            // Common keys for wrapped arrays
+            for key in &["data", "items", "results", "records"] {
+                if let Some(Value::Array(arr)) = map.get(*key) {
+                    found_data = Some(arr.clone());
+                    break;
+                }
+            }
+            // If we found a wrapped array, use it; otherwise use the object itself as a row
+            found_data.unwrap_or_else(|| vec![Value::Object(map.clone())])
+        }
         _ => {
+            // Not a list or object, fallback to pretty JSON
             println!("{}", serde_json::to_string_pretty(value)?);
             return Ok(());
         }
     };
 
     if rows.is_empty() {
-        println!("(no results)");
+        println!("{}", "(no results)".dimmed());
         return Ok(());
     }
 
-    // Collect headers from first row
-    let headers: Vec<String> = if let Value::Object(map) = &rows[0] {
+    // Build the table using tabled crate
+    let mut builder = Builder::default();
+
+    // Collect headers from the first object row (if it is one)
+    let headers: Vec<String> = if let Some(Value::Object(map)) = rows.first() {
         map.keys().cloned().collect()
     } else {
+        // Fallback for non-object arrays
         println!("{}", serde_json::to_string_pretty(value)?);
         return Ok(());
     };
 
-    // Print header
-    println!("{}", headers.join("\t|\t"));
-    println!("{}", "-".repeat(headers.len() * 20));
+    // Push headers to the table builder
+    builder.push_record(headers.clone());
 
-    // Print rows
-    for row in &rows {
+    // Push rows to the table builder
+    for row in rows {
         if let Value::Object(map) = row {
             let cells: Vec<String> = headers
                 .iter()
@@ -90,14 +106,19 @@ fn print_table(value: &Value) -> Result<()> {
                     map.get(h)
                         .map(|v| match v {
                             Value::String(s) => s.clone(),
+                            Value::Null => "".to_string(),
                             other => other.to_string(),
                         })
                         .unwrap_or_default()
                 })
                 .collect();
-            println!("{}", cells.join("\t|\t"));
+            builder.push_record(cells);
         }
     }
+
+    // Render the table with a clean style
+    let table = builder.build().with(Style::modern()).to_string();
+    println!("{}", table);
 
     Ok(())
 }
