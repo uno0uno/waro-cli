@@ -13,7 +13,10 @@ pub fn eprint_warning(msg: &str) {
     eprintln!("{} {}", "warn:".yellow().bold(), msg);
 }
 
-/// Apply field mask to a JSON value (object or array of objects)
+/// Apply field mask to a JSON value (object or array of objects).
+///
+/// For paginated responses `{data: [...], ...}` the filter is applied to
+/// each item inside `data`, not to the top-level wrapper.
 pub fn apply_fields(value: Value, fields: Option<&str>) -> Value {
     let Some(fields_str) = fields else {
         return value;
@@ -26,6 +29,18 @@ pub fn apply_fields(value: Value, fields: Option<&str>) -> Value {
                 .map(|item| filter_object(item, &keys))
                 .collect(),
         ),
+        Value::Object(ref map) if map.get("data").is_some_and(|v| v.is_array()) => {
+            // Paginated response — filter items inside data, keep wrapper intact
+            let mut out = map.clone();
+            if let Some(Value::Array(arr)) = map.get("data") {
+                let filtered = arr
+                    .iter()
+                    .map(|item| filter_object(item.clone(), &keys))
+                    .collect();
+                out.insert("data".to_string(), Value::Array(filtered));
+            }
+            Value::Object(out)
+        }
         obj @ Value::Object(_) => filter_object(obj, &keys),
         other => other,
     }
