@@ -26,6 +26,7 @@ pub enum WarosCommands {
 // ── estimate ──────────────────────────────────────────────────────────────────
 
 #[derive(Args)]
+#[command(arg_required_else_help = true)]
 pub struct EstimateArgs {
     /// Purchase total amount (required)
     #[arg(long)]
@@ -43,6 +44,7 @@ pub struct EstimateArgs {
 // ── balances ──────────────────────────────────────────────────────────────────
 
 #[derive(Args)]
+#[command(arg_required_else_help = true)]
 pub struct BalancesArgs {
     /// Comma-separated customer profile UUIDs (e.g. uuid1,uuid2,uuid3)
     #[arg(long)]
@@ -56,6 +58,7 @@ pub struct BalancesArgs {
 // ── customer ──────────────────────────────────────────────────────────────────
 
 #[derive(Args)]
+#[command(arg_required_else_help = true)]
 pub struct CustomerArgs {
     /// Customer profile UUID
     #[arg(long)]

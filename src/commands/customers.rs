@@ -105,6 +105,7 @@ pub struct MetricsArgs {
 // ── orders ─────────────────────────────────────────────────────────────────────
 
 #[derive(Args)]
+#[command(arg_required_else_help = true)]
 pub struct OrdersArgs {
     /// Customer UUID (required)
     #[arg(long)]
@@ -142,6 +143,7 @@ pub struct OrdersArgs {
 // ── detail ─────────────────────────────────────────────────────────────────────
 
 #[derive(Args)]
+#[command(arg_required_else_help = true)]
 pub struct DetailArgs {
     /// Customer UUID
     #[arg(long)]

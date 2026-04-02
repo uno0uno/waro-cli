@@ -120,6 +120,7 @@ pub struct MetricsArgs {
 // ── detail ────────────────────────────────────────────────────────────────────
 
 #[derive(Args)]
+#[command(arg_required_else_help = true)]
 pub struct DetailArgs {
     /// Order UUID
     #[arg(long)]
