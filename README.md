@@ -4,21 +4,41 @@ Developer CLI for the [WaRo Colombia](https://warocol.com) public API — built 
 
 ## Install
 
-### From source (requires Rust)
-```bash
-git clone https://github.com/uno0uno/waro-cli
-cd waro-cli
-cargo build --release
-# Binary at: ./target/release/waro
-```
+### Prebuilt binary — recommended (macOS + Linux)
 
-### Prebuilt binary (macOS + Linux)
+Download and run the installer:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/uno0uno/waro-cli/main/install.sh | sh
 ```
 
+Or inspect the script before running it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/uno0uno/waro-cli/main/install.sh > install.sh
+cat install.sh   # review it
+sh install.sh
+```
+
 Installs to `/usr/local/bin/waro` (or `~/.local/bin/waro` if no write access).
-Supported: macOS ARM64, macOS Intel, Linux x86_64, Linux ARM64.
+Supported platforms: macOS ARM64, macOS Intel, Linux x86_64, Linux ARM64.
+
+### From source (requires Rust)
+
+```bash
+git clone https://github.com/uno0uno/waro-cli
+cd waro-cli
+cargo build --release
+cp target/release/waro ~/.local/bin/waro   # or any directory in your PATH
+```
+
+### Update
+
+Re-run the installer at any time — it always fetches the latest release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/uno0uno/waro-cli/main/install.sh | sh
+```
 
 ## Setup
 
