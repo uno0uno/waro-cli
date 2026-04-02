@@ -23,8 +23,8 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-    /// Output format: json (default) | table | fields (list available fields)
-    #[arg(long, global = true, default_value = "json")]
+    /// Output format
+    #[arg(long, global = true, default_value = "json", value_parser = ["json", "table", "fields"])]
     output: String,
 
     /// Comma-separated fields to include in response (e.g. id,status,total)
