@@ -28,6 +28,8 @@ pub enum AnalyticsCommands {
     Cohort(CohortArgs),
     /// WaRos loyalty program analytics — totals and optional grouping by day/week/customer
     WarosAnalytics(WarosAnalyticsArgs),
+    /// RFM customer segmentation — Champions, Loyal, At Risk, Hibernating, Lost
+    Rfm(RfmArgs),
 }
 
 // ── menu ──────────────────────────────────────────────────────────────────────
@@ -136,6 +138,35 @@ pub struct WarosAnalyticsArgs {
     dry_run: bool,
 }
 
+// ── rfm ───────────────────────────────────────────────────────────────────────
+
+#[derive(Args)]
+pub struct RfmArgs {
+    /// Start date YYYY-MM-DD (evaluation window)
+    #[arg(long)]
+    date_from: Option<String>,
+
+    /// End date YYYY-MM-DD (evaluation window)
+    #[arg(long)]
+    date_to: Option<String>,
+
+    /// Filter output to one segment: champions | loyal | at-risk | hibernating | lost
+    #[arg(long)]
+    segment: Option<String>,
+
+    /// Quintile count for scoring (2-10, default 5)
+    #[arg(long, default_value = "5")]
+    segments: u32,
+
+    /// Expand each segment with individual customer rows (name, scores, spent, last order)
+    #[arg(long)]
+    show_customers: bool,
+
+    /// Validate request locally without calling the API
+    #[arg(long)]
+    dry_run: bool,
+}
+
 // ── handlers ──────────────────────────────────────────────────────────────────
 
 pub async fn run(
@@ -151,6 +182,7 @@ pub async fn run(
         AnalyticsCommands::DataQuality(a) => data_quality(a, client, format, fields).await,
         AnalyticsCommands::Cohort(a) => cohort(a, client, format, fields).await,
         AnalyticsCommands::WarosAnalytics(a) => waros_analytics(a, client, format, fields).await,
+        AnalyticsCommands::Rfm(a) => rfm(a, client, format, fields).await,
     }
 }
 
@@ -616,6 +648,299 @@ fn print_waros_groups(value: &serde_json::Value, group_by: &str) -> Result<()> {
             println!(
                 "{:<period_w$}  {:>num_w$}  {:>num_w$}  {:>8}",
                 period_trunc, earned, redeemed, members,
+            );
+        }
+    }
+
+    Ok(())
+}
+
+// ── Segment name helpers ───────────────────────────────────────────────────────
+
+/// Map CLI kebab-case segment flag to the API's title-case spelling.
+fn normalize_segment(s: &str) -> Option<&'static str> {
+    match s.to_lowercase().as_str() {
+        "champions" => Some("Champions"),
+        "loyal" => Some("Loyal"),
+        "at-risk" | "at_risk" => Some("At Risk"),
+        "hibernating" => Some("Hibernating"),
+        "lost" => Some("Lost"),
+        _ => None,
+    }
+}
+
+/// Fixed display order for segment summary rows.
+const SEGMENT_ORDER: &[&str] = &["Champions", "Loyal", "At Risk", "Hibernating", "Lost"];
+
+async fn rfm(
+    a: RfmArgs,
+    client: &WaroClient,
+    format: &str,
+    fields: Option<String>,
+) -> Result<()> {
+    if let Some(ref v) = a.date_from {
+        validate::validate_date("date-from", v)?;
+    }
+    if let Some(ref v) = a.date_to {
+        validate::validate_date("date-to", v)?;
+    }
+
+    // Validate and normalize --segment flag
+    let segment_filter: Option<&'static str> = if let Some(ref s) = a.segment {
+        match normalize_segment(s) {
+            Some(canonical) => Some(canonical),
+            None => {
+                anyhow::bail!(
+                    "Invalid segment '{}'. Valid values: champions, loyal, at-risk, hibernating, lost",
+                    s
+                );
+            }
+        }
+    } else {
+        None
+    };
+
+    let body = json!({
+        "dateFrom": a.date_from,
+        "dateTo": a.date_to,
+        "segments": a.segments,
+    });
+
+    if a.dry_run {
+        println!("DRY RUN — POST /v1/analytics/rfm");
+        println!("{}", serde_json::to_string_pretty(&body)?);
+        return Ok(());
+    }
+
+    let sp = Spinner::start();
+    let resp = client.post("/v1/analytics/rfm", body).await?;
+    sp.stop();
+
+    if format == "table" {
+        let data = match resp.get("data") {
+            Some(d) => d,
+            None => {
+                println!("(no data)");
+                return Ok(());
+            }
+        };
+        let customers: &[serde_json::Value] = data
+            .get("customers")
+            .and_then(|v| v.as_array())
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]);
+
+        // Apply client-side segment filter
+        let filtered: Vec<&serde_json::Value> = customers
+            .iter()
+            .filter(|c| {
+                if let Some(seg) = segment_filter {
+                    c.get("segment").and_then(|v| v.as_str()) == Some(seg)
+                } else {
+                    true
+                }
+            })
+            .collect();
+
+        if filtered.is_empty() {
+            println!("(no customers found in this period)");
+            return Ok(());
+        }
+
+        let evaluated_to = data
+            .get("evaluated_to")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let evaluated_from = data
+            .get("evaluated_from")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let segments_used = data
+            .get("segments_used")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(5);
+
+        if a.show_customers {
+            print_rfm_customers(&filtered, evaluated_to)?;
+        } else {
+            print_rfm_summary(&filtered, evaluated_to)?;
+        }
+
+        println!();
+        println!(
+            "Evaluated: {} → {}  ({} customers, {} quintiles)",
+            evaluated_from,
+            evaluated_to,
+            filtered.len(),
+            segments_used
+        );
+    } else {
+        let resp = output::apply_fields(resp, fields.as_deref());
+        output::print(&resp, format)?;
+    }
+    Ok(())
+}
+
+fn print_rfm_summary(customers: &[&serde_json::Value], evaluated_to: &str) -> Result<()> {
+    // Parse evaluated_to date for recency calculation
+    let eval_date = NaiveDate::parse_from_str(evaluated_to, "%Y-%m-%d").ok();
+
+    // Aggregate per segment
+    struct SegStats {
+        count: usize,
+        total_ticket: f64,
+        total_orders: f64,
+        total_recency_days: f64,
+    }
+
+    use std::collections::HashMap;
+    let mut stats: HashMap<&str, SegStats> = HashMap::new();
+
+    for c in customers {
+        let seg = c
+            .get("segment")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Lost");
+        let order_count = c
+            .get("order_count")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0)
+            .max(1.0);
+        let total_spent = c
+            .get("total_spent")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let avg_ticket = total_spent / order_count;
+
+        // Compute recency_days from last_order_date vs evaluated_to
+        let recency_days = if let Some(ed) = eval_date {
+            let last_str = c
+                .get("last_order_date")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            // last_order_date is "YYYY-MM-DDTHH:MM:SS"
+            let last_date = NaiveDate::parse_from_str(&last_str[..last_str.len().min(10)], "%Y-%m-%d").ok();
+            last_date
+                .map(|ld| ed.signed_duration_since(ld).num_days() as f64)
+                .unwrap_or(0.0)
+        } else {
+            0.0
+        };
+
+        let entry = stats.entry(seg).or_insert(SegStats {
+            count: 0,
+            total_ticket: 0.0,
+            total_orders: 0.0,
+            total_recency_days: 0.0,
+        });
+        entry.count += 1;
+        entry.total_ticket += avg_ticket;
+        entry.total_orders += order_count;
+        entry.total_recency_days += recency_days;
+    }
+
+    let seg_w = 14usize;
+    let cnt_w = 7usize;
+    let ticket_w = 12usize;
+    let orders_w = 11usize;
+    let days_w = 9usize;
+
+    println!(
+        "{:<seg_w$}  {:>cnt_w$}  {:>ticket_w$}  {:>orders_w$}  {:>days_w$}",
+        "SEGMENT".bold(),
+        "COUNT".bold(),
+        "AVG TICKET".bold(),
+        "AVG ORDERS".bold(),
+        "AVG DAYS".bold(),
+    );
+    println!(
+        "{}",
+        "─".repeat(seg_w + 2 + cnt_w + 2 + ticket_w + 2 + orders_w + 2 + days_w)
+    );
+
+    for &seg in SEGMENT_ORDER {
+        if let Some(s) = stats.get(seg) {
+            let avg_ticket = s.total_ticket / s.count as f64;
+            let avg_orders = s.total_orders / s.count as f64;
+            let avg_days = s.total_recency_days / s.count as f64;
+            println!(
+                "{:<seg_w$}  {:>cnt_w$}  {:>ticket_w$}  {:>orders_w$.1}  {:>days_w$.0}",
+                seg,
+                s.count,
+                format!("${}", avg_ticket as i64),
+                avg_orders,
+                avg_days,
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn print_rfm_customers(customers: &[&serde_json::Value], evaluated_to: &str) -> Result<()> {
+    let eval_date = NaiveDate::parse_from_str(evaluated_to, "%Y-%m-%d").ok();
+
+    let seg_w = 14usize;
+    let name_w = 24usize;
+    let score_w = 3usize;
+    let orders_w = 7usize;
+    let spent_w = 10usize;
+    let date_w = 11usize;
+
+    println!(
+        "{:<seg_w$}  {:<name_w$}  {:>score_w$}  {:>score_w$}  {:>score_w$}  {:>orders_w$}  {:>spent_w$}  {:<date_w$}",
+        "SEGMENT".bold(),
+        "NAME".bold(),
+        "R".bold(),
+        "F".bold(),
+        "M".bold(),
+        "ORDERS".bold(),
+        "SPENT".bold(),
+        "LAST ORDER".bold(),
+    );
+    println!(
+        "{}",
+        "─".repeat(seg_w + 2 + name_w + 2 + score_w + 2 + score_w + 2 + score_w + 2 + orders_w + 2 + spent_w + 2 + date_w)
+    );
+
+    // Group by segment order
+    for &seg in SEGMENT_ORDER {
+        for c in customers.iter().filter(|c| {
+            c.get("segment").and_then(|v| v.as_str()) == Some(seg)
+        }) {
+            let name = c
+                .get("customer_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("-");
+            let name_trunc = if name.len() > name_w {
+                format!("{}…", &name[..name_w - 1])
+            } else {
+                name.to_string()
+            };
+
+            let r = c.get("r_score").and_then(|v| v.as_i64()).unwrap_or(0);
+            let f = c.get("f_score").and_then(|v| v.as_i64()).unwrap_or(0);
+            let m = c.get("m_score").and_then(|v| v.as_i64()).unwrap_or(0);
+            let orders = c.get("order_count").and_then(|v| v.as_i64()).unwrap_or(0);
+            let spent = c.get("total_spent").and_then(|v| v.as_i64()).unwrap_or(0);
+
+            let last_str = c
+                .get("last_order_date")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let last_display = &last_str[..last_str.len().min(10)];
+
+            // Recency highlighting: green if recent (≤7d), yellow (≤30d), red (>30d)
+            let _ = eval_date; // used for summary; in customer view we just show the date
+
+            println!(
+                "{:<seg_w$}  {:<name_w$}  {:>score_w$}  {:>score_w$}  {:>score_w$}  {:>orders_w$}  {:>spent_w$}  {:<date_w$}",
+                seg,
+                name_trunc,
+                r, f, m,
+                orders,
+                format!("${}", spent),
+                last_display,
             );
         }
     }
