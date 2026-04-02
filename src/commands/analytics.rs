@@ -26,6 +26,8 @@ pub enum AnalyticsCommands {
     DataQuality(DataQualityArgs),
     /// Customer retention cohort matrix
     Cohort(CohortArgs),
+    /// WaRos loyalty program analytics — totals and optional grouping by day/week/customer
+    WarosAnalytics(WarosAnalyticsArgs),
 }
 
 // ── menu ──────────────────────────────────────────────────────────────────────
@@ -113,6 +115,27 @@ pub struct CohortArgs {
     dry_run: bool,
 }
 
+// ── waros-analytics ───────────────────────────────────────────────────────────
+
+#[derive(Args)]
+pub struct WarosAnalyticsArgs {
+    /// Start date YYYY-MM-DD
+    #[arg(long)]
+    date_from: Option<String>,
+
+    /// End date YYYY-MM-DD
+    #[arg(long)]
+    date_to: Option<String>,
+
+    /// Group by: day | week | customer (omit for summary only)
+    #[arg(long)]
+    group_by: Option<String>,
+
+    /// Validate request locally without calling the API
+    #[arg(long)]
+    dry_run: bool,
+}
+
 // ── handlers ──────────────────────────────────────────────────────────────────
 
 pub async fn run(
@@ -127,6 +150,7 @@ pub async fn run(
         AnalyticsCommands::Alerts(a) => alerts(a, client, format, fields).await,
         AnalyticsCommands::DataQuality(a) => data_quality(a, client, format, fields).await,
         AnalyticsCommands::Cohort(a) => cohort(a, client, format, fields).await,
+        AnalyticsCommands::WarosAnalytics(a) => waros_analytics(a, client, format, fields).await,
     }
 }
 
@@ -398,6 +422,202 @@ fn print_cohort_table(value: &serde_json::Value, period: &str) -> Result<()> {
             row.push_str(&format!("  {:>pct_w$}", cell));
         }
         println!("{}", row);
+    }
+
+    Ok(())
+}
+
+async fn waros_analytics(
+    a: WarosAnalyticsArgs,
+    client: &WaroClient,
+    format: &str,
+    fields: Option<String>,
+) -> Result<()> {
+    if let Some(ref v) = a.date_from {
+        validate::validate_date("date-from", v)?;
+    }
+    if let Some(ref v) = a.date_to {
+        validate::validate_date("date-to", v)?;
+    }
+    if let Some(ref v) = a.group_by {
+        validate::validate_enum("group-by", v, &["day", "week", "customer"])?;
+    }
+
+    // API requires groupBy — default to "day" when not specified
+    let group_by = a.group_by.clone().unwrap_or_else(|| "day".to_string());
+
+    let body = json!({
+        "dateFrom": a.date_from,
+        "dateTo": a.date_to,
+        "groupBy": group_by,
+    });
+
+    if a.dry_run {
+        println!("DRY RUN — POST /v1/analytics/waros");
+        println!("{}", serde_json::to_string_pretty(&body)?);
+        return Ok(());
+    }
+
+    let sp = Spinner::start();
+    let resp = client.post("/v1/analytics/waros", body).await?;
+    sp.stop();
+
+    if format == "table" {
+        let has_groups = resp
+            .get("groups")
+            .and_then(|v| v.as_array())
+            .map(|arr| !arr.is_empty())
+            .unwrap_or(false);
+        print_waros_summary(&resp)?;
+        if has_groups {
+            println!();
+            print_waros_groups(&resp, &group_by)?;
+        }
+    } else {
+        let resp = output::apply_fields(resp, fields.as_deref());
+        output::print(&resp, format)?;
+    }
+    Ok(())
+}
+
+/// Color-code redemption rate: green ≥30%, yellow 10–29%, red <10%.
+fn color_rate(pct: f64) -> String {
+    let s = format!("{:.1}%", pct);
+    if pct >= 30.0 {
+        s.green().to_string()
+    } else if pct >= 10.0 {
+        s.yellow().to_string()
+    } else {
+        s.red().to_string()
+    }
+}
+
+fn print_waros_summary(value: &serde_json::Value) -> Result<()> {
+    let summary = match value.get("summary") {
+        Some(s) => s,
+        None => {
+            println!("(no summary data)");
+            return Ok(());
+        }
+    };
+
+    let issued = summary
+        .get("total_issued")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    let redeemed = summary
+        .get("total_redeemed")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    let rate = summary
+        .get("redemption_rate_pct")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let members = summary
+        .get("active_members")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+
+    println!("{}", "── WaRos Summary ─────────────────".bold());
+    println!("  {:<20} {:>10}", "Issued".bold(), issued);
+    println!("  {:<20} {:>10}", "Redeemed".bold(), redeemed);
+    println!(
+        "  {:<20} {:>10}",
+        "Redemption rate".bold(),
+        color_rate(rate)
+    );
+    println!("  {:<20} {:>10}", "Active members".bold(), members);
+
+    Ok(())
+}
+
+fn print_waros_groups(value: &serde_json::Value, group_by: &str) -> Result<()> {
+    let groups = match value.get("groups").and_then(|v| v.as_array()) {
+        Some(arr) if !arr.is_empty() => arr,
+        _ => {
+            println!("(no group data)");
+            return Ok(());
+        }
+    };
+
+    if group_by == "customer" {
+        // NAME | EARNED | REDEEMED | TXS  (no phone — no PII)
+        let name_w = 28usize;
+        let num_w = 10usize;
+        println!(
+            "{:<name_w$}  {:>num_w$}  {:>num_w$}  {:>6}",
+            "NAME".bold(),
+            "EARNED".bold(),
+            "REDEEMED".bold(),
+            "TXS".bold(),
+        );
+        println!("{}", "─".repeat(name_w + 2 + num_w + 2 + num_w + 2 + 6));
+        for row in groups {
+            let name = row
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("-");
+            let name_trunc = if name.len() > name_w {
+                format!("{}…", &name[..name_w - 1])
+            } else {
+                name.to_string()
+            };
+            let earned = row
+                .get("total_earned")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let redeemed = row
+                .get("total_redeemed")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let txs = row
+                .get("transaction_count")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            println!(
+                "{:<name_w$}  {:>num_w$}  {:>num_w$}  {:>6}",
+                name_trunc, earned, redeemed, txs,
+            );
+        }
+    } else {
+        // PERIOD | EARNED | REDEEMED | MEMBERS
+        let period_w = 14usize;
+        let num_w = 10usize;
+        println!(
+            "{:<period_w$}  {:>num_w$}  {:>num_w$}  {:>8}",
+            "PERIOD".bold(),
+            "EARNED".bold(),
+            "REDEEMED".bold(),
+            "MEMBERS".bold(),
+        );
+        println!("{}", "─".repeat(period_w + 2 + num_w + 2 + num_w + 2 + 8));
+        for row in groups {
+            let period = row
+                .get("period")
+                .and_then(|v| v.as_str())
+                .unwrap_or("-");
+            let period_trunc = if period.len() > period_w {
+                format!("{}…", &period[..period_w - 1])
+            } else {
+                period.to_string()
+            };
+            let earned = row
+                .get("total_earned")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let redeemed = row
+                .get("total_redeemed")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let members = row
+                .get("active_members")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            println!(
+                "{:<period_w$}  {:>num_w$}  {:>num_w$}  {:>8}",
+                period_trunc, earned, redeemed, members,
+            );
+        }
     }
 
     Ok(())
