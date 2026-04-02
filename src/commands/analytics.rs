@@ -269,23 +269,23 @@ async fn food_cost(
         validate::validate_date("date-to", v)?;
     }
 
-    let (compare_to_val, compare_from_val, compare_date_to_val) =
-        if let Some(ref ct) = a.compare_to {
-            let (mode, from, to) = compare::parse_compare_to(ct)?;
-            (
-                serde_json::Value::String(mode),
-                from.map(serde_json::Value::String)
-                    .unwrap_or(serde_json::Value::Null),
-                to.map(serde_json::Value::String)
-                    .unwrap_or(serde_json::Value::Null),
-            )
-        } else {
-            (
-                serde_json::Value::Null,
-                serde_json::Value::Null,
-                serde_json::Value::Null,
-            )
-        };
+    let (compare_to_val, compare_from_val, compare_date_to_val) = if let Some(ref ct) = a.compare_to
+    {
+        let (mode, from, to) = compare::parse_compare_to(ct)?;
+        (
+            serde_json::Value::String(mode),
+            from.map(serde_json::Value::String)
+                .unwrap_or(serde_json::Value::Null),
+            to.map(serde_json::Value::String)
+                .unwrap_or(serde_json::Value::Null),
+        )
+    } else {
+        (
+            serde_json::Value::Null,
+            serde_json::Value::Null,
+            serde_json::Value::Null,
+        )
+    };
 
     let body = json!({
         "dateFrom": a.date_from,
@@ -338,12 +338,12 @@ fn print_food_cost_comparison(value: &serde_json::Value) -> Result<()> {
     let prev_cost = prev.and_then(|p| get_f64(p, "total_cost"));
 
     // food_cost_pct change_pct from comparison object
-    let pct_delta = cmp.and_then(|c| get_f64(c, "change_pct")).or_else(|| {
-        match (cur_pct, prev_pct) {
-            (Some(c), Some(p)) if p != 0.0 => Some((c - p) / p * 100.0),
-            _ => None,
-        }
-    });
+    let pct_delta =
+        cmp.and_then(|c| get_f64(c, "change_pct"))
+            .or_else(|| match (cur_pct, prev_pct) {
+                (Some(c), Some(p)) if p != 0.0 => Some((c - p) / p * 100.0),
+                _ => None,
+            });
     let revenue_delta = match (cur_revenue, prev_revenue) {
         (Some(c), Some(p)) if p != 0.0 => Some((c - p) / p * 100.0),
         _ => None,
@@ -560,7 +560,10 @@ fn print_cohort_table(value: &serde_json::Value, period: &str) -> Result<()> {
         header.push_str(&format!("  {:>pct_w$}", format!("+{}", i)));
     }
     println!("{}", header.bold());
-    println!("{}", "─".repeat(cohort_w + 2 + size_w + (n_periods * (pct_w + 2))));
+    println!(
+        "{}",
+        "─".repeat(cohort_w + 2 + size_w + (n_periods * (pct_w + 2)))
+    );
 
     for cohort in cohorts {
         let label = cohort
@@ -739,10 +742,7 @@ fn print_waros_groups(value: &serde_json::Value, group_by: &str) -> Result<()> {
         );
         println!("{}", "─".repeat(name_w + 2 + num_w + 2 + num_w + 2 + 6));
         for row in groups {
-            let name = row
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("-");
+            let name = row.get("name").and_then(|v| v.as_str()).unwrap_or("-");
             let name_trunc = if name.len() > name_w {
                 format!("{}…", &name[..name_w - 1])
             } else {
@@ -778,10 +778,7 @@ fn print_waros_groups(value: &serde_json::Value, group_by: &str) -> Result<()> {
         );
         println!("{}", "─".repeat(period_w + 2 + num_w + 2 + num_w + 2 + 8));
         for row in groups {
-            let period = row
-                .get("period")
-                .and_then(|v| v.as_str())
-                .unwrap_or("-");
+            let period = row.get("period").and_then(|v| v.as_str()).unwrap_or("-");
             let period_trunc = if period.len() > period_w {
                 format!("{}…", &period[..period_w - 1])
             } else {
@@ -826,12 +823,7 @@ fn normalize_segment(s: &str) -> Option<&'static str> {
 /// Fixed display order for segment summary rows.
 const SEGMENT_ORDER: &[&str] = &["Champions", "Loyal", "At Risk", "Hibernating", "Lost"];
 
-async fn rfm(
-    a: RfmArgs,
-    client: &WaroClient,
-    format: &str,
-    fields: Option<String>,
-) -> Result<()> {
+async fn rfm(a: RfmArgs, client: &WaroClient, format: &str, fields: Option<String>) -> Result<()> {
     if let Some(ref v) = a.date_from {
         validate::validate_date("date-from", v)?;
     }
@@ -951,19 +943,13 @@ fn print_rfm_summary(customers: &[&serde_json::Value], evaluated_to: &str) -> Re
     let mut stats: HashMap<&str, SegStats> = HashMap::new();
 
     for c in customers {
-        let seg = c
-            .get("segment")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Lost");
+        let seg = c.get("segment").and_then(|v| v.as_str()).unwrap_or("Lost");
         let order_count = c
             .get("order_count")
             .and_then(|v| v.as_f64())
             .unwrap_or(1.0)
             .max(1.0);
-        let total_spent = c
-            .get("total_spent")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
+        let total_spent = c.get("total_spent").and_then(|v| v.as_f64()).unwrap_or(0.0);
         let avg_ticket = total_spent / order_count;
 
         // Compute recency_days from last_order_date vs evaluated_to
@@ -973,7 +959,8 @@ fn print_rfm_summary(customers: &[&serde_json::Value], evaluated_to: &str) -> Re
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
             // last_order_date is "YYYY-MM-DDTHH:MM:SS"
-            let last_date = NaiveDate::parse_from_str(&last_str[..last_str.len().min(10)], "%Y-%m-%d").ok();
+            let last_date =
+                NaiveDate::parse_from_str(&last_str[..last_str.len().min(10)], "%Y-%m-%d").ok();
             last_date
                 .map(|ld| ed.signed_duration_since(ld).num_days() as f64)
                 .unwrap_or(0.0)
@@ -1054,14 +1041,31 @@ fn print_rfm_customers(customers: &[&serde_json::Value], evaluated_to: &str) -> 
     );
     println!(
         "{}",
-        "─".repeat(seg_w + 2 + name_w + 2 + score_w + 2 + score_w + 2 + score_w + 2 + orders_w + 2 + spent_w + 2 + date_w)
+        "─".repeat(
+            seg_w
+                + 2
+                + name_w
+                + 2
+                + score_w
+                + 2
+                + score_w
+                + 2
+                + score_w
+                + 2
+                + orders_w
+                + 2
+                + spent_w
+                + 2
+                + date_w
+        )
     );
 
     // Group by segment order
     for &seg in SEGMENT_ORDER {
-        for c in customers.iter().filter(|c| {
-            c.get("segment").and_then(|v| v.as_str()) == Some(seg)
-        }) {
+        for c in customers
+            .iter()
+            .filter(|c| c.get("segment").and_then(|v| v.as_str()) == Some(seg))
+        {
             let name = c
                 .get("customer_name")
                 .and_then(|v| v.as_str())
@@ -1231,7 +1235,21 @@ fn print_churn_risk_table(
         );
         println!(
             "{}",
-            "─".repeat(name_w + 2 + phone_w + 2 + orders_w + 2 + ltv_w + 2 + interval_w + 2 + silent_w + 2 + risk_w)
+            "─".repeat(
+                name_w
+                    + 2
+                    + phone_w
+                    + 2
+                    + orders_w
+                    + 2
+                    + ltv_w
+                    + 2
+                    + interval_w
+                    + 2
+                    + silent_w
+                    + 2
+                    + risk_w
+            )
         );
     } else {
         println!(
@@ -1245,7 +1263,9 @@ fn print_churn_risk_table(
         );
         println!(
             "{}",
-            "─".repeat(name_w + 2 + orders_w + 2 + ltv_w + 2 + interval_w + 2 + silent_w + 2 + risk_w)
+            "─".repeat(
+                name_w + 2 + orders_w + 2 + ltv_w + 2 + interval_w + 2 + silent_w + 2 + risk_w
+            )
         );
     }
 
@@ -1266,7 +1286,10 @@ fn print_churn_risk_table(
             .and_then(|v| v.as_i64())
             .unwrap_or(0);
 
-        let ltv = c.get("lifetime_value").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let ltv = c
+            .get("lifetime_value")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
 
         let avg_interval = c
             .get("avg_visit_interval_days")

@@ -245,23 +245,23 @@ async fn metrics(
     };
 
     // Parse optional --compare-to
-    let (compare_to_val, compare_from_val, compare_date_to_val) =
-        if let Some(ref ct) = a.compare_to {
-            let (mode, from, to) = compare::parse_compare_to(ct)?;
-            (
-                serde_json::Value::String(mode),
-                from.map(serde_json::Value::String)
-                    .unwrap_or(serde_json::Value::Null),
-                to.map(serde_json::Value::String)
-                    .unwrap_or(serde_json::Value::Null),
-            )
-        } else {
-            (
-                serde_json::Value::Null,
-                serde_json::Value::Null,
-                serde_json::Value::Null,
-            )
-        };
+    let (compare_to_val, compare_from_val, compare_date_to_val) = if let Some(ref ct) = a.compare_to
+    {
+        let (mode, from, to) = compare::parse_compare_to(ct)?;
+        (
+            serde_json::Value::String(mode),
+            from.map(serde_json::Value::String)
+                .unwrap_or(serde_json::Value::Null),
+            to.map(serde_json::Value::String)
+                .unwrap_or(serde_json::Value::Null),
+        )
+    } else {
+        (
+            serde_json::Value::Null,
+            serde_json::Value::Null,
+            serde_json::Value::Null,
+        )
+    };
 
     let body = json!({
         "dateFrom": a.date_from,
@@ -327,12 +327,11 @@ fn print_sales_comparison(value: &serde_json::Value) -> Result<()> {
     let sales_pct = get_f64(data, "totalSales_change_pct");
     let ticket_pct = get_f64(data, "avgTicket_change_pct");
     // Compute orders delta client-side if not in response
-    let orders_pct = get_f64(data, "totalOrders_change_pct").or_else(|| {
-        match (cur_orders, prev_orders) {
+    let orders_pct =
+        get_f64(data, "totalOrders_change_pct").or_else(|| match (cur_orders, prev_orders) {
             (Some(c), Some(p)) if p != 0.0 => Some((c - p) / p * 100.0),
             _ => None,
-        }
-    });
+        });
 
     let fmt_cop = |v: Option<f64>| -> String {
         v.map(|f| format!("${}", f as i64))

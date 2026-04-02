@@ -306,23 +306,23 @@ async fn metrics(
         validate::validate_enum("group-by", v, &["date", "weekday", "month"])?;
     }
 
-    let (compare_to_val, compare_from_val, compare_date_to_val) =
-        if let Some(ref ct) = a.compare_to {
-            let (mode, from, to) = compare::parse_compare_to(ct)?;
-            (
-                serde_json::Value::String(mode),
-                from.map(serde_json::Value::String)
-                    .unwrap_or(serde_json::Value::Null),
-                to.map(serde_json::Value::String)
-                    .unwrap_or(serde_json::Value::Null),
-            )
-        } else {
-            (
-                serde_json::Value::Null,
-                serde_json::Value::Null,
-                serde_json::Value::Null,
-            )
-        };
+    let (compare_to_val, compare_from_val, compare_date_to_val) = if let Some(ref ct) = a.compare_to
+    {
+        let (mode, from, to) = compare::parse_compare_to(ct)?;
+        (
+            serde_json::Value::String(mode),
+            from.map(serde_json::Value::String)
+                .unwrap_or(serde_json::Value::Null),
+            to.map(serde_json::Value::String)
+                .unwrap_or(serde_json::Value::Null),
+        )
+    } else {
+        (
+            serde_json::Value::Null,
+            serde_json::Value::Null,
+            serde_json::Value::Null,
+        )
+    };
 
     let body = json!({
         "dateFrom": a.date_from,
@@ -383,18 +383,16 @@ fn print_customers_comparison(value: &serde_json::Value) -> Result<()> {
 
     let revenue_pct = get_f64(summary, "total_revenue_change_pct");
     let customers_pct = get_f64(summary, "total_customers_change_pct");
-    let ticket_pct = get_f64(summary, "avg_ticket_change_pct").or_else(|| {
-        match (cur_ticket, prev_ticket) {
+    let ticket_pct =
+        get_f64(summary, "avg_ticket_change_pct").or_else(|| match (cur_ticket, prev_ticket) {
             (Some(c), Some(p)) if p != 0.0 => Some((c - p) / p * 100.0),
             _ => None,
-        }
-    });
-    let orders_pct = get_f64(summary, "avg_orders_change_pct").or_else(|| {
-        match (cur_orders, prev_orders) {
+        });
+    let orders_pct =
+        get_f64(summary, "avg_orders_change_pct").or_else(|| match (cur_orders, prev_orders) {
             (Some(c), Some(p)) if p != 0.0 => Some((c - p) / p * 100.0),
             _ => None,
-        }
-    });
+        });
 
     let fmt_cop = |v: Option<f64>| -> String {
         v.map(|f| format!("${}", f as i64))
