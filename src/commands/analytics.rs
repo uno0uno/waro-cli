@@ -31,6 +31,8 @@ pub enum AnalyticsCommands {
     WarosAnalytics(WarosAnalyticsArgs),
     /// RFM customer segmentation — Champions, Loyal, At Risk, Hibernating, Lost
     Rfm(RfmArgs),
+    /// Customers at churn risk — silence exceeds N × their personal avg visit interval
+    ChurnRisk(ChurnRiskArgs),
 }
 
 // ── menu ──────────────────────────────────────────────────────────────────────
@@ -172,6 +174,35 @@ pub struct RfmArgs {
     dry_run: bool,
 }
 
+// ── churn-risk ────────────────────────────────────────────────────────────────
+
+#[derive(Args)]
+pub struct ChurnRiskArgs {
+    /// Minimum lifetime orders to include a customer (default: 3)
+    #[arg(long, default_value = "3")]
+    min_orders: u32,
+
+    /// Flag when silence exceeds N × avg visit interval (default: 2.0)
+    #[arg(long, default_value = "2.0")]
+    multiplier: f64,
+
+    /// Max customers to return (default: 20)
+    #[arg(long, default_value = "20")]
+    limit: u32,
+
+    /// Filter by risk level: high | medium (omit for all)
+    #[arg(long)]
+    risk: Option<String>,
+
+    /// Include phone number column (opt-in — contains PII)
+    #[arg(long)]
+    show_contact: bool,
+
+    /// Validate request locally without calling the API
+    #[arg(long)]
+    dry_run: bool,
+}
+
 // ── handlers ──────────────────────────────────────────────────────────────────
 
 pub async fn run(
@@ -188,6 +219,7 @@ pub async fn run(
         AnalyticsCommands::Cohort(a) => cohort(a, client, format, fields).await,
         AnalyticsCommands::WarosAnalytics(a) => waros_analytics(a, client, format, fields).await,
         AnalyticsCommands::Rfm(a) => rfm(a, client, format, fields).await,
+        AnalyticsCommands::ChurnRisk(a) => churn_risk(a, client, format, fields).await,
     }
 }
 
@@ -1066,6 +1098,227 @@ fn print_rfm_customers(customers: &[&serde_json::Value], evaluated_to: &str) -> 
             );
         }
     }
+
+    Ok(())
+}
+
+async fn churn_risk(
+    a: ChurnRiskArgs,
+    client: &WaroClient,
+    format: &str,
+    fields: Option<String>,
+) -> Result<()> {
+    if let Some(ref v) = a.risk {
+        validate::validate_enum("risk", v, &["high", "medium"])?;
+    }
+
+    let body = json!({
+        "thresholdMultiplier": a.multiplier,
+        "minOrders": a.min_orders,
+        "limit": a.limit,
+    });
+
+    if a.dry_run {
+        println!("DRY RUN — POST /v1/analytics/churn-risk");
+        println!("{}", serde_json::to_string_pretty(&body)?);
+        return Ok(());
+    }
+
+    let sp = Spinner::start();
+    let resp = client.post("/v1/analytics/churn-risk", body).await?;
+    sp.stop();
+
+    if format == "table" {
+        print_churn_risk_table(
+            &resp,
+            a.show_contact,
+            a.risk.as_deref(),
+            a.multiplier,
+            a.min_orders,
+        )?;
+    } else {
+        let resp = output::apply_fields(resp, fields.as_deref());
+        output::print(&resp, format)?;
+    }
+    Ok(())
+}
+
+/// Derive HIGH/MEDIUM risk label from risk_score.
+/// All API-returned customers have already exceeded the threshold.
+/// score >= 0.5 → HIGH (at 2× their avg interval), < 0.5 → MEDIUM
+fn risk_label(score: f64) -> &'static str {
+    if score >= 0.5 {
+        "HIGH"
+    } else {
+        "MEDIUM"
+    }
+}
+
+fn color_risk(score: f64) -> String {
+    if score >= 0.5 {
+        "🔴 HIGH".red().bold().to_string()
+    } else {
+        "🟡 MEDIUM".yellow().to_string()
+    }
+}
+
+/// Format a COP value with thousands comma separator: 4052000 → "$4,052,000"
+fn format_ltv(v: f64) -> String {
+    let n = v as i64;
+    let s = n.to_string();
+    let bytes = s.as_bytes();
+    let mut out = String::with_capacity(s.len() + s.len() / 3 + 1);
+    for (i, &b) in bytes.iter().enumerate() {
+        if i > 0 && (bytes.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(b as char);
+    }
+    format!("${}", out)
+}
+
+fn print_churn_risk_table(
+    value: &serde_json::Value,
+    show_contact: bool,
+    risk_filter: Option<&str>,
+    multiplier: f64,
+    min_orders: u32,
+) -> Result<()> {
+    let customers = match value.get("customers").and_then(|v| v.as_array()) {
+        Some(arr) if !arr.is_empty() => arr,
+        _ => {
+            println!("(no customers at churn risk)");
+            return Ok(());
+        }
+    };
+
+    // Apply client-side risk filter
+    let filtered: Vec<&serde_json::Value> = customers
+        .iter()
+        .filter(|c| {
+            if let Some(f) = risk_filter {
+                let score = c.get("risk_score").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                risk_label(score).to_lowercase() == f
+            } else {
+                true
+            }
+        })
+        .collect();
+
+    if filtered.is_empty() {
+        println!("(no customers match the risk filter)");
+        return Ok(());
+    }
+
+    let name_w = 20usize;
+    let phone_w = 14usize;
+    let orders_w = 6usize;
+    let ltv_w = 12usize;
+    let interval_w = 13usize;
+    let silent_w = 11usize;
+    let risk_w = 10usize;
+
+    if show_contact {
+        println!(
+            "{:<name_w$}  {:<phone_w$}  {:>orders_w$}  {:>ltv_w$}  {:>interval_w$}  {:>silent_w$}  {}",
+            "CUSTOMER".bold(),
+            "PHONE".bold(),
+            "ORDERS".bold(),
+            "LTV".bold(),
+            "AVG INTERVAL".bold(),
+            "DAYS SILENT".bold(),
+            "RISK".bold(),
+        );
+        println!(
+            "{}",
+            "─".repeat(name_w + 2 + phone_w + 2 + orders_w + 2 + ltv_w + 2 + interval_w + 2 + silent_w + 2 + risk_w)
+        );
+    } else {
+        println!(
+            "{:<name_w$}  {:>orders_w$}  {:>ltv_w$}  {:>interval_w$}  {:>silent_w$}  {}",
+            "CUSTOMER".bold(),
+            "ORDERS".bold(),
+            "LTV".bold(),
+            "AVG INTERVAL".bold(),
+            "DAYS SILENT".bold(),
+            "RISK".bold(),
+        );
+        println!(
+            "{}",
+            "─".repeat(name_w + 2 + orders_w + 2 + ltv_w + 2 + interval_w + 2 + silent_w + 2 + risk_w)
+        );
+    }
+
+    for c in &filtered {
+        let name = c.get("name").and_then(|v| v.as_str()).unwrap_or("-");
+        let name_trunc = if name.chars().count() > name_w {
+            let truncated: String = name.chars().take(name_w - 1).collect();
+            format!("{}…", truncated)
+        } else {
+            name.to_string()
+        };
+
+        let phone = c.get("phone").and_then(|v| v.as_str()).unwrap_or("-");
+
+        let orders = c
+            .get("order_count")
+            .or_else(|| c.get("orders"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+
+        let ltv = c.get("lifetime_value").and_then(|v| v.as_f64()).unwrap_or(0.0);
+
+        let avg_interval = c
+            .get("avg_visit_interval_days")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let interval_str = format!("{:.1} days", avg_interval);
+
+        let days_silent = c
+            .get("days_since_last_order")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let silent_str = format!("{} days", days_silent);
+
+        let score = c.get("risk_score").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let risk_col = color_risk(score);
+
+        if show_contact {
+            println!(
+                "{:<name_w$}  {:<phone_w$}  {:>orders_w$}  {:>ltv_w$}  {:>interval_w$}  {:>silent_w$}  {}",
+                name_trunc,
+                phone,
+                orders,
+                format_ltv(ltv),
+                interval_str,
+                silent_str,
+                risk_col,
+            );
+        } else {
+            println!(
+                "{:<name_w$}  {:>orders_w$}  {:>ltv_w$}  {:>interval_w$}  {:>silent_w$}  {}",
+                name_trunc,
+                orders,
+                format_ltv(ltv),
+                interval_str,
+                silent_str,
+                risk_col,
+            );
+        }
+    }
+
+    let total = value
+        .get("total_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(filtered.len() as u64);
+    println!();
+    println!(
+        "Showing {} of {} at-risk customers  (multiplier: {:.1}×, min orders: {})",
+        filtered.len(),
+        total,
+        multiplier,
+        min_orders,
+    );
 
     Ok(())
 }
