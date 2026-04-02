@@ -1,4 +1,5 @@
 use crate::client::WaroClient;
+use crate::compare;
 use crate::output;
 use crate::spinner::Spinner;
 use crate::validate;
@@ -64,6 +65,10 @@ pub struct FoodCostArgs {
     /// End date YYYY-MM-DD
     #[arg(long)]
     date_to: Option<String>,
+
+    /// Compare current period to: previous-period | previous-year | YYYY-MM-DD:YYYY-MM-DD
+    #[arg(long)]
+    compare_to: Option<String>,
 
     /// Validate request locally without calling the API
     #[arg(long)]
@@ -232,9 +237,30 @@ async fn food_cost(
         validate::validate_date("date-to", v)?;
     }
 
+    let (compare_to_val, compare_from_val, compare_date_to_val) =
+        if let Some(ref ct) = a.compare_to {
+            let (mode, from, to) = compare::parse_compare_to(ct)?;
+            (
+                serde_json::Value::String(mode),
+                from.map(serde_json::Value::String)
+                    .unwrap_or(serde_json::Value::Null),
+                to.map(serde_json::Value::String)
+                    .unwrap_or(serde_json::Value::Null),
+            )
+        } else {
+            (
+                serde_json::Value::Null,
+                serde_json::Value::Null,
+                serde_json::Value::Null,
+            )
+        };
+
     let body = json!({
         "dateFrom": a.date_from,
         "dateTo": a.date_to,
+        "compareTo": compare_to_val,
+        "compareFrom": compare_from_val,
+        "compareDateTo": compare_date_to_val,
     });
 
     if a.dry_run {
@@ -246,8 +272,104 @@ async fn food_cost(
     let sp = Spinner::start();
     let resp = client.post("/v1/analytics/food-cost", body).await?;
     sp.stop();
-    let resp = output::apply_fields(resp, fields.as_deref());
-    output::print(&resp, format)?;
+
+    if format == "table" && a.compare_to.is_some() {
+        print_food_cost_comparison(&resp)?;
+    } else {
+        let resp = output::apply_fields(resp, fields.as_deref());
+        output::print(&resp, format)?;
+    }
+    Ok(())
+}
+
+fn print_food_cost_comparison(value: &serde_json::Value) -> Result<()> {
+    let cur = match value.get("current_period") {
+        Some(c) => c,
+        None => {
+            output::print(value, "json")?;
+            return Ok(());
+        }
+    };
+    let prev = value.get("previous_period");
+    let cmp = value.get("comparison");
+
+    let get_f64 = |obj: &serde_json::Value, key: &str| -> Option<f64> {
+        obj.get(key).and_then(|v| v.as_f64())
+    };
+
+    let cur_pct = get_f64(cur, "food_cost_pct");
+    let cur_revenue = get_f64(cur, "revenue");
+    let cur_cost = get_f64(cur, "total_cost");
+
+    let prev_pct = prev.and_then(|p| get_f64(p, "food_cost_pct"));
+    let prev_revenue = prev.and_then(|p| get_f64(p, "revenue"));
+    let prev_cost = prev.and_then(|p| get_f64(p, "total_cost"));
+
+    // food_cost_pct change_pct from comparison object
+    let pct_delta = cmp.and_then(|c| get_f64(c, "change_pct")).or_else(|| {
+        match (cur_pct, prev_pct) {
+            (Some(c), Some(p)) if p != 0.0 => Some((c - p) / p * 100.0),
+            _ => None,
+        }
+    });
+    let revenue_delta = match (cur_revenue, prev_revenue) {
+        (Some(c), Some(p)) if p != 0.0 => Some((c - p) / p * 100.0),
+        _ => None,
+    };
+    let cost_delta = match (cur_cost, prev_cost) {
+        (Some(c), Some(p)) if p != 0.0 => Some((c - p) / p * 100.0),
+        _ => None,
+    };
+
+    let fmt_cop = |v: Option<f64>| -> String {
+        v.map(|f| format!("${}", f as i64))
+            .unwrap_or_else(|| "-".to_string())
+    };
+    let fmt_pct = |v: Option<f64>| -> String {
+        v.map(|f| format!("{:.1}%", f))
+            .unwrap_or_else(|| "-".to_string())
+    };
+
+    let lbl_w = 16usize;
+    let col_w = 14usize;
+
+    println!(
+        "{:<lbl_w$}  {:>col_w$}  {:>col_w$}  {}",
+        "METRIC".bold(),
+        "CURRENT".bold(),
+        "PREVIOUS".bold(),
+        "CHANGE".bold(),
+    );
+    println!("{}", "─".repeat(lbl_w + 2 + col_w + 2 + col_w + 2 + 12));
+
+    let rows: &[(&str, String, String, String)] = &[
+        (
+            "Revenue",
+            fmt_cop(cur_revenue),
+            fmt_cop(prev_revenue),
+            compare::format_delta(revenue_delta, false, false),
+        ),
+        (
+            "Total Cost",
+            fmt_cop(cur_cost),
+            fmt_cop(prev_cost),
+            compare::format_delta(cost_delta, false, false),
+        ),
+        (
+            "Food Cost %",
+            fmt_pct(cur_pct),
+            fmt_pct(prev_pct),
+            compare::format_delta(pct_delta, true, true),
+        ),
+    ];
+
+    for (label, cur, prev, delta) in rows {
+        println!(
+            "{:<lbl_w$}  {:>col_w$}  {:>col_w$}  {}",
+            label, cur, prev, delta
+        );
+    }
+
     Ok(())
 }
 

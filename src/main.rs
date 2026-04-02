@@ -1,5 +1,6 @@
 mod client;
 mod commands;
+mod compare;
 mod config;
 mod output;
 mod pagination;

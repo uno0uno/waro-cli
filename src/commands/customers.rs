@@ -1,10 +1,12 @@
 use crate::client::WaroClient;
+use crate::compare;
 use crate::output;
 use crate::pagination;
 use crate::spinner::Spinner;
 use crate::validate;
 use anyhow::Result;
 use clap::{Args, Subcommand};
+use colored::Colorize;
 use serde_json::json;
 
 #[derive(Args)]
@@ -89,6 +91,10 @@ pub struct MetricsArgs {
     /// Timezone (default: America/Bogota)
     #[arg(long, default_value = "America/Bogota")]
     timezone: String,
+
+    /// Compare current period to: previous-period | previous-year | YYYY-MM-DD:YYYY-MM-DD
+    #[arg(long)]
+    compare_to: Option<String>,
 
     /// Validate request locally without calling the API
     #[arg(long)]
@@ -300,11 +306,32 @@ async fn metrics(
         validate::validate_enum("group-by", v, &["date", "weekday", "month"])?;
     }
 
+    let (compare_to_val, compare_from_val, compare_date_to_val) =
+        if let Some(ref ct) = a.compare_to {
+            let (mode, from, to) = compare::parse_compare_to(ct)?;
+            (
+                serde_json::Value::String(mode),
+                from.map(serde_json::Value::String)
+                    .unwrap_or(serde_json::Value::Null),
+                to.map(serde_json::Value::String)
+                    .unwrap_or(serde_json::Value::Null),
+            )
+        } else {
+            (
+                serde_json::Value::Null,
+                serde_json::Value::Null,
+                serde_json::Value::Null,
+            )
+        };
+
     let body = json!({
         "dateFrom": a.date_from,
         "dateTo": a.date_to,
         "groupBy": a.group_by,
         "timezone": a.timezone,
+        "compareTo": compare_to_val,
+        "compareFrom": compare_from_val,
+        "compareDateTo": compare_date_to_val,
     });
 
     if a.dry_run {
@@ -316,8 +343,120 @@ async fn metrics(
     let sp = Spinner::start();
     let resp = client.post("/v1/customers/metrics", body).await?;
     sp.stop();
-    let resp = output::apply_fields(resp, fields.as_deref());
-    output::print(&resp, format)?;
+
+    if format == "table" && a.compare_to.is_some() {
+        print_customers_comparison(&resp)?;
+    } else {
+        let resp = output::apply_fields(resp, fields.as_deref());
+        output::print(&resp, format)?;
+    }
+    Ok(())
+}
+
+fn print_customers_comparison(value: &serde_json::Value) -> Result<()> {
+    let summary = match value.get("summary") {
+        Some(s) => s,
+        None => {
+            output::print(value, "json")?;
+            return Ok(());
+        }
+    };
+
+    let prev = value
+        .get("comparison")
+        .and_then(|c| c.as_object())
+        .and_then(|m| m.values().next());
+
+    let get_f64 = |obj: &serde_json::Value, key: &str| -> Option<f64> {
+        obj.get(key).and_then(|v| v.as_f64())
+    };
+
+    let cur_revenue = get_f64(summary, "total_revenue");
+    let cur_customers = get_f64(summary, "total_customers");
+    let cur_ticket = get_f64(summary, "avg_ticket");
+    let cur_orders = get_f64(summary, "avg_orders_per_customer");
+
+    let prev_revenue = prev.and_then(|p| get_f64(p, "total_revenue"));
+    let prev_customers = prev.and_then(|p| get_f64(p, "total_customers"));
+    let prev_ticket = prev.and_then(|p| get_f64(p, "avg_ticket"));
+    let prev_orders = prev.and_then(|p| get_f64(p, "avg_orders_per_customer"));
+
+    let revenue_pct = get_f64(summary, "total_revenue_change_pct");
+    let customers_pct = get_f64(summary, "total_customers_change_pct");
+    let ticket_pct = get_f64(summary, "avg_ticket_change_pct").or_else(|| {
+        match (cur_ticket, prev_ticket) {
+            (Some(c), Some(p)) if p != 0.0 => Some((c - p) / p * 100.0),
+            _ => None,
+        }
+    });
+    let orders_pct = get_f64(summary, "avg_orders_change_pct").or_else(|| {
+        match (cur_orders, prev_orders) {
+            (Some(c), Some(p)) if p != 0.0 => Some((c - p) / p * 100.0),
+            _ => None,
+        }
+    });
+
+    let fmt_cop = |v: Option<f64>| -> String {
+        v.map(|f| format!("${}", f as i64))
+            .unwrap_or_else(|| "-".to_string())
+    };
+    let fmt_num = |v: Option<f64>, decimals: usize| -> String {
+        v.map(|f| {
+            if decimals == 0 {
+                format!("{}", f as i64)
+            } else {
+                format!("{:.1}", f)
+            }
+        })
+        .unwrap_or_else(|| "-".to_string())
+    };
+
+    let lbl_w = 24usize;
+    let col_w = 14usize;
+
+    println!(
+        "{:<lbl_w$}  {:>col_w$}  {:>col_w$}  {}",
+        "METRIC".bold(),
+        "CURRENT".bold(),
+        "PREVIOUS".bold(),
+        "CHANGE".bold(),
+    );
+    println!("{}", "─".repeat(lbl_w + 2 + col_w + 2 + col_w + 2 + 12));
+
+    let rows: &[(&str, String, String, String)] = &[
+        (
+            "Total Revenue",
+            fmt_cop(cur_revenue),
+            fmt_cop(prev_revenue),
+            compare::format_delta(revenue_pct, false, false),
+        ),
+        (
+            "Total Customers",
+            fmt_num(cur_customers, 0),
+            fmt_num(prev_customers, 0),
+            compare::format_delta(customers_pct, false, false),
+        ),
+        (
+            "Avg Ticket",
+            fmt_cop(cur_ticket),
+            fmt_cop(prev_ticket),
+            compare::format_delta(ticket_pct, false, false),
+        ),
+        (
+            "Avg Orders/Customer",
+            fmt_num(cur_orders, 1),
+            fmt_num(prev_orders, 1),
+            compare::format_delta(orders_pct, false, false),
+        ),
+    ];
+
+    for (label, cur, prev, delta) in rows {
+        println!(
+            "{:<lbl_w$}  {:>col_w$}  {:>col_w$}  {}",
+            label, cur, prev, delta
+        );
+    }
+
     Ok(())
 }
 
