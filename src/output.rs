@@ -58,15 +58,30 @@ fn filter_object(value: Value, keys: &[&str]) -> Value {
     }
 }
 
-/// Print JSON value — pretty for json mode, table for table mode
+/// Print JSON value — pretty for json mode, table for table mode, fields to list available fields
 pub fn print(value: &Value, format: &str) -> Result<()> {
     match format {
         "table" => print_table(value),
+        "fields" => print_fields(value),
         _ => {
             println!("{}", serde_json::to_string_pretty(value)?);
             Ok(())
         }
     }
+}
+
+/// Print the field names available in the first row of the response
+fn print_fields(value: &Value) -> Result<()> {
+    let rows = find_rows(value);
+    let Some(Value::Object(map)) = rows.first() else {
+        println!("(no fields found)");
+        return Ok(());
+    };
+    println!("Available fields:");
+    for key in map.keys() {
+        println!("  {}", key);
+    }
+    Ok(())
 }
 
 /// Render a single JSON value as a readable table cell string.

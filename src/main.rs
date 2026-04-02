@@ -22,7 +22,7 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-    /// Output format: json (default) | table
+    /// Output format: json (default) | table | fields (list available fields)
     #[arg(long, global = true, default_value = "json")]
     output: String,
 
