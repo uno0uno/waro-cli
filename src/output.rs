@@ -54,69 +54,162 @@ pub fn print(value: &Value, format: &str) -> Result<()> {
     }
 }
 
-fn print_table(value: &Value) -> Result<()> {
-    // Attempt to "unwrap" paginated or list-wrapped responses
-    let rows = match value {
-        Value::Array(arr) => arr.clone(),
+/// Render a single JSON value as a readable table cell string.
+/// - Strings/numbers/bools → as-is
+/// - Null → ""
+/// - Arrays → "[N]" (or "" if empty)
+/// - Objects → prefer "name" or "title" field; otherwise comma-list of scalar fields
+fn cell_value(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Null => String::new(),
+        Value::Bool(b) => b.to_string(),
+        Value::Number(n) => n.to_string(),
+        Value::Array(arr) => {
+            if arr.is_empty() {
+                String::new()
+            } else {
+                format!("[{}]", arr.len())
+            }
+        }
         Value::Object(map) => {
-            let mut found_data = None;
-            // Common keys for wrapped arrays
-            for key in &["data", "items", "results", "records"] {
-                if let Some(Value::Array(arr)) = map.get(*key) {
-                    found_data = Some(arr.clone());
-                    break;
+            // Prefer a human-readable label field
+            for label_key in &["name", "title", "label"] {
+                if let Some(Value::String(s)) = map.get(*label_key) {
+                    return s.clone();
                 }
             }
-            // If we found a wrapped array, use it; otherwise use the object itself as a row
-            found_data.unwrap_or_else(|| vec![Value::Object(map.clone())])
+            // Fall back to "key: value" pairs for scalar fields only
+            let parts: Vec<String> = map
+                .iter()
+                .filter_map(|(k, v)| match v {
+                    Value::String(s) => Some(format!("{}: {}", k, s)),
+                    Value::Number(n) => Some(format!("{}: {}", k, n)),
+                    Value::Bool(b) => Some(format!("{}: {}", k, b)),
+                    _ => None,
+                })
+                .collect();
+            if parts.is_empty() {
+                "{...}".to_string()
+            } else {
+                parts.join(", ")
+            }
         }
-        _ => {
-            // Not a list or object, fallback to pretty JSON
-            println!("{}", serde_json::to_string_pretty(value)?);
-            return Ok(());
+    }
+}
+
+/// Locate the best rows to display from an API response.
+///
+/// Resolution order:
+/// 1. Value is already an array → use it directly
+/// 2. `data` key is an array → use it
+/// 3. `data` key is an object → look for a nested array in common keys
+///    (`menu_items`, `alerts`, `products`, `orders`, `items`, `rows`)
+/// 4. `data` key is a flat scalar-only object → show as a single row
+/// 5. Top-level known array keys: `top_customers`, `products`, `items`,
+///    `results`, `records`, `rows`
+/// 6. `balances` key is a map of id → value → convert to [{profile_id, balance}] rows
+/// 7. Fallback: treat the whole object as a single row
+fn find_rows(value: &Value) -> Vec<Value> {
+    match value {
+        Value::Array(arr) => arr.clone(),
+        Value::Object(map) => {
+            // 1. data → array
+            if let Some(Value::Array(arr)) = map.get("data") {
+                return arr.clone();
+            }
+
+            // 2. data → object
+            if let Some(Value::Object(data_obj)) = map.get("data") {
+                // 2a. nested array inside data
+                for key in &[
+                    "menu_items",
+                    "alerts",
+                    "products",
+                    "orders",
+                    "items",
+                    "rows",
+                ] {
+                    if let Some(Value::Array(arr)) = data_obj.get(*key) {
+                        return arr.clone();
+                    }
+                }
+                // 2b. flat data object → single row
+                return vec![Value::Object(data_obj.clone())];
+            }
+
+            // 3. top-level known array keys
+            for key in &[
+                "top_customers",
+                "products",
+                "items",
+                "results",
+                "records",
+                "rows",
+            ] {
+                if let Some(Value::Array(arr)) = map.get(*key) {
+                    return arr.clone();
+                }
+            }
+
+            // 4. balances map → [{profile_id, balance}]
+            if let Some(Value::Object(balances)) = map.get("balances") {
+                return balances
+                    .iter()
+                    .map(|(k, v)| serde_json::json!({"profile_id": k, "balance": v}))
+                    .collect();
+            }
+
+            // 5. fallback: whole object as single row
+            vec![value.clone()]
         }
-    };
+        _ => vec![],
+    }
+}
+
+fn print_table(value: &Value) -> Result<()> {
+    let rows = find_rows(value);
 
     if rows.is_empty() {
         println!("{}", "(no results)".dimmed());
         return Ok(());
     }
 
-    // Build the table using tabled crate
-    let mut builder = Builder::default();
-
-    // Collect headers from the first object row (if it is one)
-    let headers: Vec<String> = if let Some(Value::Object(map)) = rows.first() {
-        map.keys().cloned().collect()
-    } else {
-        // Fallback for non-object arrays
-        println!("{}", serde_json::to_string_pretty(value)?);
-        return Ok(());
+    // Collect headers from the union of all row keys (preserving first-row order)
+    let headers: Vec<String> = {
+        let mut seen = std::collections::HashSet::new();
+        let mut order = Vec::new();
+        for row in &rows {
+            if let Value::Object(map) = row {
+                for k in map.keys() {
+                    if seen.insert(k.clone()) {
+                        order.push(k.clone());
+                    }
+                }
+            }
+        }
+        order
     };
 
-    // Push headers to the table builder
+    if headers.is_empty() {
+        // No object rows — fall back to pretty JSON
+        println!("{}", serde_json::to_string_pretty(value)?);
+        return Ok(());
+    }
+
+    let mut builder = Builder::default();
     builder.push_record(headers.clone());
 
-    // Push rows to the table builder
-    for row in rows {
+    for row in &rows {
         if let Value::Object(map) = row {
             let cells: Vec<String> = headers
                 .iter()
-                .map(|h| {
-                    map.get(h)
-                        .map(|v| match v {
-                            Value::String(s) => s.clone(),
-                            Value::Null => "".to_string(),
-                            other => other.to_string(),
-                        })
-                        .unwrap_or_default()
-                })
+                .map(|h| map.get(h).map(cell_value).unwrap_or_default())
                 .collect();
             builder.push_record(cells);
         }
     }
 
-    // Render the table with a clean style
     let table = builder.build().with(Style::modern()).to_string();
     println!("{}", table);
 
