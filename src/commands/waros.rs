@@ -7,6 +7,7 @@ use clap::{Args, Subcommand};
 use serde_json::json;
 
 #[derive(Args)]
+#[command(arg_required_else_help = true)]
 pub struct WarosArgs {
     #[command(subcommand)]
     pub command: WarosCommands,

@@ -1,6 +1,6 @@
 [package]
 name = "waro-cli"
-version = "0.3.7"
+version = "0.3.8"
 edition = "2021"
 description = "WaRo Colombia CLI — Developer tool for the WaRo public API"
 authors = ["WaRo Colombia <dev@warocol.com>"]

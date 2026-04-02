@@ -10,6 +10,7 @@ use colored::Colorize;
 use serde_json::json;
 
 #[derive(Args)]
+#[command(arg_required_else_help = true)]
 pub struct CustomersArgs {
     #[command(subcommand)]
     pub command: CustomersCommands,

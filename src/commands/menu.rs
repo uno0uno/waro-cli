@@ -8,6 +8,7 @@ use clap::{Args, Subcommand};
 use serde_json::json;
 
 #[derive(Args)]
+#[command(arg_required_else_help = true)]
 pub struct MenuArgs {
     #[command(subcommand)]
     pub command: MenuCommands,

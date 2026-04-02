@@ -17,6 +17,7 @@ use clap_complete::Shell;
     version,
     about = "WaRo Colombia CLI — Developer tool for the WaRo public API",
     long_about = None,
+    arg_required_else_help = true,
 )]
 struct Cli {
     #[command(subcommand)]
