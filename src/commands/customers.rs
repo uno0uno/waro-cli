@@ -239,8 +239,15 @@ async fn list(
     }
 
     if a.all {
-        return pagination::fetch_all(client, "/v1/customers", filters, a.limit, fields.as_deref(), format)
-            .await;
+        return pagination::fetch_all(
+            client,
+            "/v1/customers",
+            filters,
+            a.limit,
+            fields.as_deref(),
+            format,
+        )
+        .await;
     }
 
     let mut body = filters;
