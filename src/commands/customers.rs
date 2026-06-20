@@ -1,5 +1,6 @@
 use crate::client::WaroClient;
 use crate::compare;
+use crate::contract;
 use crate::output;
 use crate::pagination;
 use crate::spinner::Spinner;
@@ -26,6 +27,17 @@ pub enum CustomersCommands {
     Metrics(MetricsArgs),
     /// Paginated order history for a specific customer
     Orders(OrdersArgs),
+}
+
+impl CustomersArgs {
+    pub fn command_label(&self) -> &'static str {
+        match self.command {
+            CustomersCommands::List(_) => "customers list",
+            CustomersCommands::Detail(_) => "customers detail",
+            CustomersCommands::Metrics(_) => "customers metrics",
+            CustomersCommands::Orders(_) => "customers orders",
+        }
+    }
 }
 
 // ── list ──────────────────────────────────────────────────────────────────────
@@ -242,6 +254,7 @@ async fn list(
 
     if a.all {
         return pagination::fetch_all(
+            "customers list",
             client,
             "/v1/customers",
             filters,
@@ -258,8 +271,7 @@ async fn list(
     let sp = Spinner::start();
     let resp = client.post("/v1/customers", body).await?;
     sp.stop();
-    let resp = output::apply_fields(resp, fields.as_deref());
-    output::print(&resp, format)?;
+    output::emit("customers list", resp, format, fields.as_deref())?;
     Ok(())
 }
 
@@ -295,8 +307,7 @@ async fn detail(
     let sp = Spinner::start();
     let resp = client.post("/v1/customers/detail", body).await?;
     sp.stop();
-    let resp = output::apply_fields(resp, fields.as_deref());
-    output::print(&resp, format)?;
+    output::emit("customers detail", resp, format, fields.as_deref())?;
     Ok(())
 }
 
@@ -357,8 +368,10 @@ async fn metrics(
     if format == "table" && a.compare_to.is_some() {
         print_customers_comparison(&resp)?;
     } else {
-        let resp = output::apply_fields(resp, fields.as_deref());
-        output::print(&resp, format)?;
+        let contract =
+            contract::dynamic_contract_for_metrics("customers metrics", a.group_by.as_deref())
+                .expect("customers metrics contract must exist");
+        output::emit_with_contract(contract, resp, format, fields.as_deref())?;
     }
     Ok(())
 }
@@ -503,6 +516,7 @@ async fn orders(
 
     if a.all {
         return pagination::fetch_all(
+            "customers orders",
             client,
             "/v1/customers/orders",
             filters,
@@ -524,8 +538,7 @@ async fn orders(
     if format == "table" {
         print_orders_table(&resp, a.include_items)?;
     } else {
-        let resp = output::apply_fields(resp, fields.as_deref());
-        output::print(&resp, format)?;
+        output::emit("customers orders", resp, format, fields.as_deref())?;
     }
     Ok(())
 }

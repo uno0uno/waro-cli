@@ -19,6 +19,14 @@ pub enum FinancialCommands {
     Products(ProductsArgs),
 }
 
+impl FinancialArgs {
+    pub fn command_label(&self) -> &'static str {
+        match self.command {
+            FinancialCommands::Products(_) => "financial products",
+        }
+    }
+}
+
 // ── products ──────────────────────────────────────────────────────────────────
 
 #[derive(Args)]
@@ -85,7 +93,6 @@ async fn products(
     let sp = Spinner::start();
     let resp = client.post("/v1/financial/products", body).await?;
     sp.stop();
-    let resp = output::apply_fields(resp, fields.as_deref());
-    output::print(&resp, format)?;
+    output::emit("financial products", resp, format, fields.as_deref())?;
     Ok(())
 }

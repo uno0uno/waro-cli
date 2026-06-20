@@ -1,4 +1,5 @@
 use crate::client::WaroClient;
+use crate::contract;
 use crate::output;
 use crate::spinner::Spinner;
 use anyhow::Result;
@@ -15,6 +16,7 @@ use serde_json::{json, Value};
 /// Iterates offset = 0, limit, 2×limit, … until a page returns fewer items
 /// than `limit` (last partial page) or an empty page.
 pub async fn fetch_all(
+    command: &str,
     client: &WaroClient,
     endpoint: &str,
     mut base_body: Value,
@@ -22,8 +24,13 @@ pub async fn fetch_all(
     fields: Option<&str>,
     format: &str,
 ) -> Result<()> {
-    if format == "table" {
-        // Table mode: collect all rows, render once
+    let contract = contract::contract_for(command);
+    if let Some(contract) = contract {
+        contract::validate_fields(contract, fields)?;
+    }
+
+    if format == "table" || format == "agent-json" {
+        // Table and agent-json modes: collect all rows, render once
         let sp = Spinner::start();
         let mut all_items: Vec<Value> = Vec::new();
         let mut offset: u32 = 0;
@@ -36,7 +43,7 @@ pub async fn fetch_all(
             let page_len = items.len();
 
             for item in items {
-                all_items.push(output::apply_fields(item, fields));
+                all_items.push(item);
             }
 
             if page_len == 0 || page_len < limit as usize {
@@ -46,8 +53,21 @@ pub async fn fetch_all(
         }
         sp.stop();
 
-        let value = Value::Array(all_items);
-        output::print(&value, "table")?;
+        let value = json!({
+            "data": all_items,
+            "pagination": {
+                "limit": limit,
+                "offset": 0,
+                "total": null,
+                "hasMore": false,
+            },
+            "success": true,
+        });
+        if let Some(contract) = contract {
+            output::emit_with_contract(contract, value, format, fields)?;
+        } else {
+            output::emit(command, value, format, fields)?;
+        }
     } else {
         // Streaming NDJSON mode: no spinner (it would interleave with stdout output)
         let mut offset: u32 = 0;
@@ -64,7 +84,16 @@ pub async fn fetch_all(
 
             let page_len = items.len();
             for item in items {
-                let item = output::apply_fields(item, fields);
+                let item = if let Some(contract) = contract {
+                    output::apply_fields_with_contract(json!({"data": [item]}), fields, contract)
+                        .get("data")
+                        .and_then(Value::as_array)
+                        .and_then(|rows| rows.first())
+                        .cloned()
+                        .unwrap_or(Value::Null)
+                } else {
+                    output::apply_fields(item, fields)
+                };
                 println!("{}", serde_json::to_string(&item)?);
             }
 

@@ -1,7 +1,8 @@
 use serde_json::json;
 use std::sync::Mutex;
 use waro_cli::config::Config;
-use waro_cli::output::apply_fields;
+use waro_cli::contract::{self, ResponseShape};
+use waro_cli::output::{apply_fields, apply_fields_with_contract, rows_for_contract};
 use waro_cli::validate::{validate_date, validate_enum, validate_uuid};
 
 /// Mutex to serialize tests that mutate environment variables.
@@ -51,21 +52,140 @@ fn apply_fields_returns_value_unchanged_when_no_fields() {
 }
 
 #[test]
+fn contract_registry_covers_schema_commands() {
+    let commands = [
+        "sales list",
+        "sales metrics",
+        "sales detail",
+        "customers list",
+        "customers detail",
+        "customers metrics",
+        "customers orders",
+        "menu products",
+        "menu recipes",
+        "menu modifiers",
+        "analytics menu",
+        "analytics food-cost",
+        "analytics alerts",
+        "analytics data-quality",
+        "financial products",
+        "waros estimate",
+        "waros balances",
+        "waros customer",
+    ];
+
+    for command in commands {
+        let contract = contract::contract_for(command)
+            .unwrap_or_else(|| panic!("missing contract for {command}"));
+        let response = contract.response_json();
+        assert!(response.get("shape").is_some());
+        assert!(response.get("row_path").is_some());
+        assert!(response.get("fields").is_some());
+        assert!(response.get("default_fields").is_some());
+        assert!(response.get("top_level_keys").is_some());
+    }
+}
+
+#[test]
+fn contract_rejects_unknown_row_fields_with_suggestion() {
+    let contract = contract::contract_for("customers list").unwrap();
+
+    let err = contract::validate_fields(contract, Some("customer_id,data,nmae"))
+        .unwrap_err()
+        .to_string();
+
+    assert!(err.contains("data"));
+    assert!(err.contains("nmae->name"));
+}
+
+#[test]
+fn data_rows_contract_filters_rows_and_rejects_wrapper_field() {
+    let contract = contract::contract_for("customers list").unwrap();
+    let value = json!({
+        "data": [
+            { "customer_id": "c1", "name": "Ana", "phone": "555", "total_spent": 1000 }
+        ],
+        "total": 1,
+        "limit": 50,
+        "offset": 0
+    });
+
+    assert!(contract::validate_fields(contract, Some("data")).is_err());
+    let filtered = apply_fields_with_contract(value, Some("customer_id,name"), contract);
+    assert_eq!(filtered["data"][0]["customer_id"], "c1");
+    assert_eq!(filtered["data"][0]["name"], "Ana");
+    assert!(filtered["data"][0].get("phone").is_none());
+}
+
+#[test]
+fn rows_for_contract_extracts_supported_shapes() {
+    let data_rows = contract::contract_for("sales list").unwrap();
+    assert_eq!(data_rows.shape, ResponseShape::DataRows);
+    let rows = rows_for_contract(
+        &json!({ "data": [{ "id": "o1" }, { "id": "o2" }] }),
+        data_rows,
+    );
+    assert_eq!(rows.len(), 2);
+
+    let nested_rows = contract::contract_for("analytics menu").unwrap();
+    assert_eq!(nested_rows.shape, ResponseShape::NestedRows);
+    let rows = rows_for_contract(
+        &json!({ "data": { "menu_items": [{ "id": "p1" }] }, "success": true }),
+        nested_rows,
+    );
+    assert_eq!(rows[0]["id"], "p1");
+
+    let top_rows = contract::contract_for("customers metrics").unwrap();
+    assert_eq!(top_rows.shape, ResponseShape::TopLevelRows);
+    let rows = rows_for_contract(
+        &json!({ "summary": {}, "top_customers": [{ "customer_id": "c1" }] }),
+        top_rows,
+    );
+    assert_eq!(rows[0]["customer_id"], "c1");
+
+    let products = contract::contract_for("financial products").unwrap();
+    let rows = rows_for_contract(
+        &json!({ "products": [{ "id": "p1", "margin": 42 }], "metrics": {} }),
+        products,
+    );
+    assert_eq!(rows[0]["margin"], 42);
+
+    let balances = contract::contract_for("waros balances").unwrap();
+    let rows = rows_for_contract(
+        &json!({ "balances": { "profile-a": 120, "profile-b": 80 } }),
+        balances,
+    );
+    assert_eq!(rows.len(), 2);
+}
+
+#[test]
 fn config_errors_without_api_key() {
     let _guard = ENV_MUTEX.lock().unwrap();
+    let tmp = std::env::temp_dir().join("waro_test_no_config_home");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::env::set_var("HOME", tmp.to_str().unwrap());
     std::env::remove_var("WARO_API_KEY");
+    std::env::remove_var("WARO_API_URL");
+    std::env::remove_var("WARO_PROFILE");
 
     let result = waro_cli::config::Config::load(None);
 
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(msg.contains("WARO_API_KEY"));
+    std::env::remove_var("HOME");
 }
 
 #[test]
 fn config_uses_default_api_url_when_not_set() {
     let _guard = ENV_MUTEX.lock().unwrap();
+    let tmp = std::env::temp_dir().join("waro_test_env_home");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::env::set_var("HOME", tmp.to_str().unwrap());
     std::env::remove_var("WARO_API_URL");
+    std::env::remove_var("WARO_PROFILE");
     std::env::set_var("WARO_API_KEY", "waro_sk_test");
 
     let config = waro_cli::config::Config::load(None).unwrap();
@@ -74,6 +194,7 @@ fn config_uses_default_api_url_when_not_set() {
     assert_eq!(config.api_key, "waro_sk_test");
 
     std::env::remove_var("WARO_API_KEY");
+    std::env::remove_var("HOME");
 }
 
 // ── validate_uuid ─────────────────────────────────────────────────────────────

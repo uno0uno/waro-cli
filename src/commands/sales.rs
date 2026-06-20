@@ -1,5 +1,6 @@
 use crate::client::WaroClient;
 use crate::compare;
+use crate::contract;
 use crate::output;
 use crate::pagination;
 use crate::spinner::Spinner;
@@ -24,6 +25,16 @@ pub enum SalesCommands {
     Metrics(MetricsArgs),
     /// Get full detail of a single sale
     Detail(DetailArgs),
+}
+
+impl SalesArgs {
+    pub fn command_label(&self) -> &'static str {
+        match self.command {
+            SalesCommands::List(_) => "sales list",
+            SalesCommands::Metrics(_) => "sales metrics",
+            SalesCommands::Detail(_) => "sales detail",
+        }
+    }
 }
 
 // ── list ──────────────────────────────────────────────────────────────────────
@@ -205,6 +216,7 @@ async fn list(
 
     if a.all {
         return pagination::fetch_all(
+            "sales list",
             client,
             "/v1/sales",
             filters,
@@ -221,8 +233,7 @@ async fn list(
     let sp = Spinner::start();
     let resp = client.post("/v1/sales", body).await?;
     sp.stop();
-    let resp = output::apply_fields(resp, fields.as_deref());
-    output::print(&resp, format)?;
+    output::emit("sales list", resp, format, fields.as_deref())?;
     Ok(())
 }
 
@@ -309,8 +320,10 @@ async fn metrics(
     if format == "table" && a.compare_to.is_some() {
         print_sales_comparison(&resp)?;
     } else {
-        let resp = output::apply_fields(resp, fields.as_deref());
-        output::print(&resp, format)?;
+        let contract =
+            contract::dynamic_contract_for_metrics("sales metrics", a.group_by.as_deref())
+                .expect("sales metrics contract must exist");
+        output::emit_with_contract(contract, resp, format, fields.as_deref())?;
     }
     Ok(())
 }
@@ -425,7 +438,6 @@ async fn detail(
     let sp = Spinner::start();
     let resp = client.post("/v1/sales/detail", body).await?;
     sp.stop();
-    let resp = output::apply_fields(resp, fields.as_deref());
-    output::print(&resp, format)?;
+    output::emit("sales detail", resp, format, fields.as_deref())?;
     Ok(())
 }

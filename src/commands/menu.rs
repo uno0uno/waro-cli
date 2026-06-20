@@ -24,6 +24,16 @@ pub enum MenuCommands {
     Modifiers(ModifiersArgs),
 }
 
+impl MenuArgs {
+    pub fn command_label(&self) -> &'static str {
+        match self.command {
+            MenuCommands::Products(_) => "menu products",
+            MenuCommands::Recipes(_) => "menu recipes",
+            MenuCommands::Modifiers(_) => "menu modifiers",
+        }
+    }
+}
+
 #[derive(Args)]
 pub struct ProductsArgs {
     /// Max results per page (1-250)
@@ -149,6 +159,7 @@ async fn products(
 
     if a.all {
         return pagination::fetch_all(
+            "menu products",
             client,
             "/v1/menu/products",
             filters,
@@ -165,8 +176,7 @@ async fn products(
     let sp = Spinner::start();
     let resp = client.post("/v1/menu/products", body).await?;
     sp.stop();
-    let resp = output::apply_fields(resp, fields.as_deref());
-    output::print(&resp, format)?;
+    output::emit("menu products", resp, format, fields.as_deref())?;
     Ok(())
 }
 
@@ -196,6 +206,7 @@ async fn recipes(
 
     if a.all {
         return pagination::fetch_all(
+            "menu recipes",
             client,
             "/v1/menu/recipes",
             filters,
@@ -212,8 +223,7 @@ async fn recipes(
     let sp = Spinner::start();
     let resp = client.post("/v1/menu/recipes", body).await?;
     sp.stop();
-    let resp = output::apply_fields(resp, fields.as_deref());
-    output::print(&resp, format)?;
+    output::emit("menu recipes", resp, format, fields.as_deref())?;
     Ok(())
 }
 
@@ -241,6 +251,7 @@ async fn modifiers(
 
     if a.all {
         return pagination::fetch_all(
+            "menu modifiers",
             client,
             "/v1/menu/modifiers",
             filters,
@@ -257,7 +268,6 @@ async fn modifiers(
     let sp = Spinner::start();
     let resp = client.post("/v1/menu/modifiers", body).await?;
     sp.stop();
-    let resp = output::apply_fields(resp, fields.as_deref());
-    output::print(&resp, format)?;
+    output::emit("menu modifiers", resp, format, fields.as_deref())?;
     Ok(())
 }

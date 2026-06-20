@@ -23,6 +23,16 @@ pub enum WarosCommands {
     Customer(CustomerArgs),
 }
 
+impl WarosArgs {
+    pub fn command_label(&self) -> &'static str {
+        match self.command {
+            WarosCommands::Estimate(_) => "waros estimate",
+            WarosCommands::Balances(_) => "waros balances",
+            WarosCommands::Customer(_) => "waros customer",
+        }
+    }
+}
+
 // ── estimate ──────────────────────────────────────────────────────────────────
 
 #[derive(Args)]
@@ -111,8 +121,7 @@ async fn estimate(
     let sp = Spinner::start();
     let resp = client.post("/v1/waros/estimate", body).await?;
     sp.stop();
-    let resp = output::apply_fields(resp, fields.as_deref());
-    output::print(&resp, format)?;
+    output::emit("waros estimate", resp, format, fields.as_deref())?;
     Ok(())
 }
 
@@ -149,8 +158,7 @@ async fn balances(
     let sp = Spinner::start();
     let resp = client.post("/v1/waros/balances", body).await?;
     sp.stop();
-    let resp = output::apply_fields(resp, fields.as_deref());
-    output::print(&resp, format)?;
+    output::emit("waros balances", resp, format, fields.as_deref())?;
     Ok(())
 }
 
@@ -175,7 +183,6 @@ async fn customer(
     let sp = Spinner::start();
     let resp = client.post("/v1/waros/customer-summary", body).await?;
     sp.stop();
-    let resp = output::apply_fields(resp, fields.as_deref());
-    output::print(&resp, format)?;
+    output::emit("waros customer", resp, format, fields.as_deref())?;
     Ok(())
 }

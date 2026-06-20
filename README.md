@@ -59,26 +59,31 @@ export WARO_API_KEY=waro_sk_your_key_here
 waro --help
 
 # Sales
-waro sales list --limit 20 --fields id,status,total
+waro sales list --limit 20 --fields id,status,totalAmount,orderDate
 waro sales list --date-from 2026-03-01 --date-to 2026-03-06 --status completed
 waro sales metrics --group-by date --date-from 2026-03-01
 waro sales detail --order-id <uuid>
 
 # Menu
-waro menu products --fields id,name,price
+waro menu products --fields id,name,price,isAvailable
 waro menu recipes
 waro menu modifiers
 
 # Table output
-waro --output table sales list --fields id,status,total --limit 10
+waro --output table sales list --fields id,status,totalAmount --limit 10
+
+# Stable machine-readable output for agents
+waro --output agent-json customers list --limit 20 --fields customer_id,name,total_spent
+waro --output agent-json financial products --fields products,metrics
 
 # Inspect endpoint schema (useful for AI agents — no API key needed)
 waro schema
 waro schema sales list
+waro schema customers list | jq '.response.fields'
 waro schema sales detail | jq '.params[] | select(.required == true)'
 
 # Auto-paginate (NDJSON output, one object per line)
-waro sales list --all --fields id,status,total
+waro sales list --all --fields id,status,totalAmount
 waro menu products --all | wc -l
 
 # Dry run (validate without API call)
@@ -136,8 +141,8 @@ If no profile is set, falls back to `WARO_API_KEY` / `WARO_API_URL` env vars (ex
 
 | Flag | Description |
 |---|---|
-| `--output json\|table` | Output format (default: json) |
-| `--fields id,name,...` | Return only these fields (reduces response size) |
+| `--output json\|table\|fields\|agent-json` | Output format (default: json); use `agent-json` for stable agent contracts |
+| `--fields id,name,...` | Return only declared response fields; unknown fields fail with suggestions |
 | `--no-color` | Disable colored output |
 | `--profile <name>` | Use a named profile from `~/.waro/config.toml` |
 

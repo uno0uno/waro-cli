@@ -36,6 +36,21 @@ pub enum AnalyticsCommands {
     ChurnRisk(ChurnRiskArgs),
 }
 
+impl AnalyticsArgs {
+    pub fn command_label(&self) -> &'static str {
+        match self.command {
+            AnalyticsCommands::Menu(_) => "analytics menu",
+            AnalyticsCommands::FoodCost(_) => "analytics food-cost",
+            AnalyticsCommands::Alerts(_) => "analytics alerts",
+            AnalyticsCommands::DataQuality(_) => "analytics data-quality",
+            AnalyticsCommands::Cohort(_) => "analytics cohort",
+            AnalyticsCommands::WarosAnalytics(_) => "analytics waros",
+            AnalyticsCommands::Rfm(_) => "analytics rfm",
+            AnalyticsCommands::ChurnRisk(_) => "analytics churn-risk",
+        }
+    }
+}
+
 // ── menu ──────────────────────────────────────────────────────────────────────
 
 #[derive(Args)]
@@ -252,8 +267,7 @@ async fn menu(
     let sp = Spinner::start();
     let resp = client.post("/v1/analytics/menu-analysis", body).await?;
     sp.stop();
-    let resp = output::apply_fields(resp, fields.as_deref());
-    output::print(&resp, format)?;
+    output::emit("analytics menu", resp, format, fields.as_deref())?;
     Ok(())
 }
 
@@ -309,8 +323,7 @@ async fn food_cost(
     if format == "table" && a.compare_to.is_some() {
         print_food_cost_comparison(&resp)?;
     } else {
-        let resp = output::apply_fields(resp, fields.as_deref());
-        output::print(&resp, format)?;
+        output::emit("analytics food-cost", resp, format, fields.as_deref())?;
     }
     Ok(())
 }
@@ -425,8 +438,7 @@ async fn alerts(
     let sp = Spinner::start();
     let resp = client.post("/v1/analytics/alerts", body).await?;
     sp.stop();
-    let resp = output::apply_fields(resp, fields.as_deref());
-    output::print(&resp, format)?;
+    output::emit("analytics alerts", resp, format, fields.as_deref())?;
     Ok(())
 }
 
@@ -447,8 +459,7 @@ async fn data_quality(
     let sp = Spinner::start();
     let resp = client.post("/v1/analytics/data-quality", body).await?;
     sp.stop();
-    let resp = output::apply_fields(resp, fields.as_deref());
-    output::print(&resp, format)?;
+    output::emit("analytics data-quality", resp, format, fields.as_deref())?;
     Ok(())
 }
 
@@ -486,8 +497,7 @@ async fn cohort(
     if format == "table" {
         print_cohort_table(&resp, &a.period)?;
     } else {
-        let resp = output::apply_fields(resp, fields.as_deref());
-        output::print(&resp, format)?;
+        output::emit("analytics cohort", resp, format, fields.as_deref())?;
     }
     Ok(())
 }
@@ -664,8 +674,7 @@ async fn waros_analytics(
             print_waros_groups(&resp, &group_by)?;
         }
     } else {
-        let resp = output::apply_fields(resp, fields.as_deref());
-        output::print(&resp, format)?;
+        output::emit("analytics waros", resp, format, fields.as_deref())?;
     }
     Ok(())
 }
@@ -922,8 +931,7 @@ async fn rfm(a: RfmArgs, client: &WaroClient, format: &str, fields: Option<Strin
             segments_used
         );
     } else {
-        let resp = output::apply_fields(resp, fields.as_deref());
-        output::print(&resp, format)?;
+        output::emit("analytics rfm", resp, format, fields.as_deref())?;
     }
     Ok(())
 }
@@ -1142,8 +1150,7 @@ async fn churn_risk(
             a.min_orders,
         )?;
     } else {
-        let resp = output::apply_fields(resp, fields.as_deref());
-        output::print(&resp, format)?;
+        output::emit("analytics churn-risk", resp, format, fields.as_deref())?;
     }
     Ok(())
 }

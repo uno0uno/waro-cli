@@ -2,6 +2,8 @@ use anyhow::Result;
 use clap::Args;
 use serde_json::{json, Value};
 
+use crate::contract;
+
 #[derive(Args)]
 pub struct SchemaArgs {
     /// Command group: sales | customers | menu | analytics | financial | waros (omit to list all)
@@ -42,7 +44,7 @@ pub fn run(args: SchemaArgs) -> Result<()> {
 
 fn valid_commands() -> &'static str {
     "sales list, sales metrics, sales detail, \
-     customers list, customers detail, customers metrics, \
+     customers list, customers detail, customers metrics, customers orders, \
      menu products, menu recipes, menu modifiers, \
      analytics menu, analytics food-cost, analytics alerts, analytics data-quality, \
      financial products, \
@@ -57,6 +59,7 @@ fn all_schemas() -> Value {
         schema_for("customers", "list").unwrap(),
         schema_for("customers", "detail").unwrap(),
         schema_for("customers", "metrics").unwrap(),
+        schema_for("customers", "orders").unwrap(),
         schema_for("menu", "products").unwrap(),
         schema_for("menu", "recipes").unwrap(),
         schema_for("menu", "modifiers").unwrap(),
@@ -117,6 +120,22 @@ fn schema_for(group: &str, subcommand: &str) -> Option<Value> {
             "paginates": false,
             "params": [
                 { "name": "order-id", "type": "string", "default": null, "required": true, "description": "Order UUID" }
+            ]
+        })),
+        ("customers", "orders") => Some(json!({
+            "command": "customers orders",
+            "method": "POST",
+            "path": "/v1/customers/orders",
+            "scope": "customers:read",
+            "paginates": true,
+            "params": [
+                { "name": "customer-id", "type": "string",  "default": null,             "required": true,  "description": "Customer UUID" },
+                { "name": "limit",       "type": "integer", "default": 20,               "required": false, "description": "Max orders per page (1-250)" },
+                { "name": "offset",      "type": "integer", "default": 0,                "required": false, "description": "Pagination offset (ignored with --all)" },
+                { "name": "all",         "type": "boolean", "default": false,            "required": false, "description": "Fetch all pages automatically, output NDJSON" },
+                { "name": "date-from",   "type": "string",  "default": null,             "required": false, "description": "Start date YYYY-MM-DD" },
+                { "name": "date-to",     "type": "string",  "default": null,             "required": false, "description": "End date YYYY-MM-DD" },
+                { "name": "timezone",    "type": "string",  "default": "America/Bogota", "required": false, "description": "IANA timezone" }
             ]
         })),
         ("menu", "products") => Some(json!({
@@ -294,4 +313,22 @@ fn schema_for(group: &str, subcommand: &str) -> Option<Value> {
         })),
         _ => None,
     }
+    .map(augment_response_contract)
+}
+
+fn augment_response_contract(mut schema: Value) -> Value {
+    let Some(command) = schema.get("command").and_then(Value::as_str) else {
+        return schema;
+    };
+    let Some(contract) = contract::contract_for(command) else {
+        return schema;
+    };
+    if let Value::Object(ref mut map) = schema {
+        map.insert("method".to_string(), json!(contract.method));
+        map.insert("path".to_string(), json!(contract.path));
+        map.insert("scope".to_string(), json!(contract.scope));
+        map.insert("paginates".to_string(), json!(contract.paginates));
+        map.insert("response".to_string(), contract.response_json());
+    }
+    schema
 }

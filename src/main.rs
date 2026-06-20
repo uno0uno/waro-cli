@@ -2,6 +2,7 @@ mod client;
 mod commands;
 mod compare;
 mod config;
+mod contract;
 mod output;
 mod pagination;
 mod spinner;
@@ -24,7 +25,7 @@ struct Cli {
     command: Commands,
 
     /// Output format
-    #[arg(long, global = true, default_value = "json", value_parser = ["json", "table", "fields"])]
+    #[arg(long, global = true, default_value = "json", value_parser = ["json", "table", "fields", "agent-json"])]
     output: String,
 
     /// Comma-separated fields to include in response (e.g. id,status,total)
@@ -81,9 +82,66 @@ async fn main() {
         }
     }
 
+    let error_format = cli.output.clone();
+    let error_command = command_label(&cli.command);
+    if error_format == "fields" {
+        if let Some(contract) = contract::contract_for(&error_command) {
+            if let Err(e) = output::print_contract_fields(contract) {
+                output::eprint_error(&e.to_string());
+                std::process::exit(1);
+            }
+            return;
+        }
+    }
     if let Err(e) = run(cli).await {
-        output::eprint_error(&e.to_string());
+        if error_format == "agent-json" {
+            let message = e.to_string();
+            let _ = output::print_agent_error(&error_command, &message, error_kind(&message));
+        } else {
+            output::eprint_error(&e.to_string());
+        }
         std::process::exit(1);
+    }
+}
+
+fn error_kind(message: &str) -> &'static str {
+    if message.contains("WARO_API_KEY")
+        || message.contains("config file")
+        || message.contains("profile")
+        || message.contains("HOME env var")
+    {
+        "config"
+    } else if message.contains("unknown field")
+        || message.contains("not allowed")
+        || message.contains("must be")
+        || message.contains("required")
+        || message.contains("Invalid")
+        || message.contains("UUID")
+        || message.contains("YYYY-MM-DD")
+    {
+        "validation"
+    } else if message.contains("HTTP")
+        || message.contains("API")
+        || message.contains("request")
+        || message.contains("response")
+    {
+        "api"
+    } else {
+        "unknown"
+    }
+}
+
+fn command_label(command: &Commands) -> String {
+    match command {
+        Commands::Sales(args) => args.command_label().to_string(),
+        Commands::Customers(args) => args.command_label().to_string(),
+        Commands::Menu(args) => args.command_label().to_string(),
+        Commands::Analytics(args) => args.command_label().to_string(),
+        Commands::Financial(args) => args.command_label().to_string(),
+        Commands::Waros(args) => args.command_label().to_string(),
+        Commands::Config => "config".to_string(),
+        Commands::Completions { .. } => "completions".to_string(),
+        Commands::Schema(_) => "schema".to_string(),
     }
 }
 

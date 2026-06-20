@@ -1,6 +1,7 @@
+use crate::contract::{self, CommandContract, ResponseShape};
 use anyhow::Result;
 use colored::Colorize;
-use serde_json::Value;
+use serde_json::{json, Value};
 use tabled::{builder::Builder, settings::Style};
 
 /// Print a red error message to stderr
@@ -11,6 +12,96 @@ pub fn eprint_error(msg: &str) {
 /// Print a yellow warning message to stderr
 pub fn eprint_warning(msg: &str) {
     eprintln!("{} {}", "warn:".yellow().bold(), msg);
+}
+
+pub fn print_agent_error(command: &str, message: &str, kind: &str) -> Result<()> {
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({
+            "schema_version": "waro.agent.v1",
+            "ok": false,
+            "command": command,
+            "error": {
+                "message": message,
+                "kind": kind,
+            },
+        }))?
+    );
+    Ok(())
+}
+
+pub fn print_contract_fields(contract: CommandContract) -> Result<()> {
+    println!("Available fields:");
+    for field in contract.fields {
+        println!("  {}", field);
+    }
+    if !contract.top_level_keys.is_empty() {
+        println!("Top-level fields:");
+        for field in contract.top_level_keys {
+            println!("  {}", field);
+        }
+    }
+    Ok(())
+}
+
+pub fn emit(command: &str, value: Value, format: &str, fields: Option<&str>) -> Result<()> {
+    let contract = contract::contract_for(command);
+    if let Some(contract) = contract {
+        contract::validate_fields(contract, fields)?;
+    }
+
+    let filtered = if let Some(contract) = contract {
+        apply_fields_with_contract(value, fields, contract)
+    } else {
+        apply_fields(value, fields)
+    };
+
+    match format {
+        "agent-json" => {
+            let Some(contract) = contract else {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&json!({
+                        "schema_version": "waro.agent.v1",
+                        "ok": false,
+                        "command": command,
+                        "error": {
+                            "message": format!("missing response contract for {command}"),
+                            "kind": "unknown",
+                        },
+                    }))?
+                );
+                return Ok(());
+            };
+            print_agent_json(contract, &filtered, fields)
+        }
+        "table" => print_table(&filtered),
+        "fields" => print_fields_for_contract(&filtered, contract),
+        _ => {
+            println!("{}", serde_json::to_string_pretty(&filtered)?);
+            Ok(())
+        }
+    }
+}
+
+pub fn emit_with_contract(
+    contract: CommandContract,
+    value: Value,
+    format: &str,
+    fields: Option<&str>,
+) -> Result<()> {
+    contract::validate_fields(contract, fields)?;
+    let filtered = apply_fields_with_contract(value, fields, contract);
+
+    match format {
+        "agent-json" => print_agent_json(contract, &filtered, fields),
+        "table" => print_table(&filtered),
+        "fields" => print_fields_for_contract(&filtered, Some(contract)),
+        _ => {
+            println!("{}", serde_json::to_string_pretty(&filtered)?);
+            Ok(())
+        }
+    }
 }
 
 /// Apply field mask to a JSON value (object or array of objects).
@@ -74,6 +165,141 @@ pub fn apply_fields(value: Value, fields: Option<&str>) -> Value {
     }
 }
 
+pub fn apply_fields_with_contract(
+    value: Value,
+    fields: Option<&str>,
+    contract: CommandContract,
+) -> Value {
+    let Some(fields_str) = fields else {
+        return value;
+    };
+    let keys: Vec<&str> = fields_str
+        .split(',')
+        .map(str::trim)
+        .filter(|field| !field.is_empty())
+        .collect();
+    if keys.is_empty() {
+        return value;
+    }
+
+    match contract.shape {
+        ResponseShape::DataRows => filter_data_rows(value, &keys),
+        ResponseShape::DataObject => filter_data_object_or_top(value, &keys, contract),
+        ResponseShape::NestedRows => filter_nested_rows(value, contract.row_path, &keys),
+        ResponseShape::TopLevelRows => filter_top_level_rows(value, contract, &keys),
+        ResponseShape::TopLevelObject => filter_object(value, &keys),
+        ResponseShape::BalancesMap => value,
+    }
+}
+
+fn filter_data_rows(value: Value, keys: &[&str]) -> Value {
+    if let Value::Object(map) = value {
+        let mut out = map.clone();
+        if let Some(Value::Array(arr)) = map.get("data") {
+            let filtered = arr
+                .iter()
+                .map(|item| filter_object(item.clone(), keys))
+                .collect();
+            out.insert("data".to_string(), Value::Array(filtered));
+        }
+        Value::Object(out)
+    } else {
+        apply_fields(value, Some(&keys.join(",")))
+    }
+}
+
+fn filter_data_object_or_top(value: Value, keys: &[&str], contract: CommandContract) -> Value {
+    if keys.iter().any(|key| contract.top_level_keys.contains(key)) {
+        return filter_object(value, keys);
+    }
+    if let Value::Object(map) = value {
+        let mut out = map.clone();
+        if let Some(Value::Object(data)) = map.get("data") {
+            out.insert(
+                "data".to_string(),
+                filter_object(Value::Object(data.clone()), keys),
+            );
+        }
+        Value::Object(out)
+    } else {
+        value
+    }
+}
+
+fn filter_nested_rows(value: Value, row_path: &str, keys: &[&str]) -> Value {
+    let path: Vec<&str> = row_path.split('.').collect();
+    if path.len() != 2 {
+        return value;
+    }
+    let [outer, inner] = [path[0], path[1]];
+    if let Value::Object(map) = value {
+        let mut out = map.clone();
+        if let Some(Value::Object(data_obj)) = map.get(outer) {
+            let mut new_data = data_obj.clone();
+            if let Some(Value::Array(arr)) = data_obj.get(inner) {
+                let filtered = arr
+                    .iter()
+                    .map(|item| filter_object(item.clone(), keys))
+                    .collect();
+                new_data.insert(inner.to_string(), Value::Array(filtered));
+            }
+            out.insert(outer.to_string(), Value::Object(new_data));
+        }
+        Value::Object(out)
+    } else {
+        value
+    }
+}
+
+fn filter_top_level_rows(value: Value, contract: CommandContract, keys: &[&str]) -> Value {
+    if let Value::Object(map) = value {
+        let top_keys: Vec<&str> = keys
+            .iter()
+            .copied()
+            .filter(|key| contract.top_level_keys.contains(key))
+            .collect();
+        let row_keys: Vec<&str> = keys
+            .iter()
+            .copied()
+            .filter(|key| contract.fields.contains(key))
+            .collect();
+
+        let mut out = if top_keys.is_empty() {
+            map.clone()
+        } else {
+            map.iter()
+                .filter(|(key, _)| top_keys.contains(&key.as_str()))
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect()
+        };
+
+        if !row_keys.is_empty() {
+            let source = map
+                .get(contract.row_path)
+                .or_else(|| out.get(contract.row_path));
+            if let Some(Value::Array(arr)) = source {
+                let filtered = arr
+                    .iter()
+                    .map(|item| filter_object(item.clone(), &row_keys))
+                    .collect();
+                out.insert(contract.row_path.to_string(), Value::Array(filtered));
+            }
+        } else if top_keys.is_empty() {
+            return Value::Object(map);
+        }
+
+        if let Some(Value::Array(arr)) = map.get(contract.row_path) {
+            if top_keys.contains(&contract.row_path) && row_keys.is_empty() {
+                out.insert(contract.row_path.to_string(), Value::Array(arr.clone()));
+            }
+        }
+
+        Value::Object(out)
+    } else {
+        value
+    }
+}
+
 fn filter_object(value: Value, keys: &[&str]) -> Value {
     if let Value::Object(map) = value {
         let filtered: serde_json::Map<String, Value> = map
@@ -110,6 +336,13 @@ fn print_fields(value: &Value) -> Result<()> {
         println!("  {}", key);
     }
     Ok(())
+}
+
+fn print_fields_for_contract(value: &Value, contract: Option<CommandContract>) -> Result<()> {
+    if let Some(contract) = contract {
+        return print_contract_fields(contract);
+    }
+    print_fields(value)
 }
 
 /// Truncate an ISO 8601 datetime string to "YYYY-MM-DD HH:MM".
@@ -248,6 +481,116 @@ fn find_rows(value: &Value) -> Vec<Value> {
         }
         _ => vec![],
     }
+}
+
+pub fn rows_for_contract(value: &Value, contract: CommandContract) -> Vec<Value> {
+    match contract.shape {
+        ResponseShape::DataRows => value
+            .get("data")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default(),
+        ResponseShape::DataObject => value
+            .get("data")
+            .and_then(Value::as_object)
+            .map(|map| vec![Value::Object(map.clone())])
+            .unwrap_or_default(),
+        ResponseShape::NestedRows => {
+            let mut current = value;
+            for part in contract.row_path.split('.') {
+                let Some(next) = current.get(part) else {
+                    return Vec::new();
+                };
+                current = next;
+            }
+            current.as_array().cloned().unwrap_or_default()
+        }
+        ResponseShape::TopLevelRows => value
+            .get(contract.row_path)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default(),
+        ResponseShape::TopLevelObject => vec![value.clone()],
+        ResponseShape::BalancesMap => value
+            .get("balances")
+            .and_then(Value::as_object)
+            .map(|balances| {
+                balances
+                    .iter()
+                    .map(|(key, value)| json!({"profile_id": key, "balance": value}))
+                    .collect()
+            })
+            .unwrap_or_default(),
+    }
+}
+
+fn pagination_for_contract(value: &Value, contract: CommandContract) -> Value {
+    if !contract.paginates {
+        return Value::Null;
+    }
+    if let Some(pagination) = value.get("pagination") {
+        return pagination.clone();
+    }
+    let mut pagination = serde_json::Map::new();
+    for key in ["limit", "offset", "total", "hasMore"] {
+        if let Some(value) = value.get(key) {
+            pagination.insert(key.to_string(), value.clone());
+        }
+    }
+    if pagination.is_empty() {
+        Value::Null
+    } else {
+        Value::Object(pagination)
+    }
+}
+
+fn data_for_contract(value: &Value, contract: CommandContract) -> Value {
+    match contract.shape {
+        ResponseShape::DataRows => Value::Null,
+        ResponseShape::DataObject => value.get("data").cloned().unwrap_or(Value::Null),
+        ResponseShape::NestedRows => value.get("data").cloned().unwrap_or(Value::Null),
+        ResponseShape::TopLevelRows => {
+            let mut out = serde_json::Map::new();
+            for key in contract.top_level_keys {
+                if *key != contract.row_path {
+                    if let Some(value) = value.get(*key) {
+                        out.insert((*key).to_string(), value.clone());
+                    }
+                }
+            }
+            Value::Object(out)
+        }
+        ResponseShape::TopLevelObject | ResponseShape::BalancesMap => value.clone(),
+    }
+}
+
+fn print_agent_json(contract: CommandContract, value: &Value, fields: Option<&str>) -> Result<()> {
+    let applied_fields = fields.map(|fields| {
+        fields
+            .split(',')
+            .map(str::trim)
+            .filter(|field| !field.is_empty())
+            .collect::<Vec<&str>>()
+    });
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({
+            "schema_version": "waro.agent.v1",
+            "ok": true,
+            "command": contract.command,
+            "method": contract.method,
+            "path": contract.path,
+            "scope": contract.scope,
+            "paginates": contract.paginates,
+            "row_path": contract.row_path,
+            "rows": rows_for_contract(value, contract),
+            "data": data_for_contract(value, contract),
+            "pagination": pagination_for_contract(value, contract),
+            "available_fields": contract.fields,
+            "applied_fields": applied_fields,
+        }))?
+    );
+    Ok(())
 }
 
 fn print_table(value: &Value) -> Result<()> {
