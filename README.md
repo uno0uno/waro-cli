@@ -75,6 +75,8 @@ waro --output table sales list --fields id,status,totalAmount --limit 10
 # Stable machine-readable output for agents
 waro --output agent-json customers list --limit 20 --fields customer_id,name,total_spent
 waro --output agent-json financial products --fields products,metrics
+waro --output agent-json queries schema
+waro --output agent-json queries run --spec '{"dataset":"sales_items","measures":["revenue"],"dimensions":["product"],"order_by":[{"field":"revenue","direction":"desc"}],"limit":5}'
 
 # Inspect endpoint schema (useful for AI agents — no API key needed)
 waro schema
@@ -84,6 +86,8 @@ waro schema customers list | jq '.capabilities'
 waro schema analytics food-cost | jq '.capabilities.semantic_aliases'
 waro schema analytics rfm | jq '.capabilities'
 waro schema analytics churn-risk | jq '.capabilities'
+waro schema queries schema
+waro schema queries run
 waro schema sales detail | jq '.params[] | select(.required == true)'
 
 # Auto-paginate (NDJSON output, one object per line)

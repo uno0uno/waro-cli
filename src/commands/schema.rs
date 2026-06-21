@@ -6,7 +6,7 @@ use crate::contract;
 
 #[derive(Args)]
 pub struct SchemaArgs {
-    /// Command group: sales | customers | menu | analytics | financial | waros (omit to list all)
+    /// Command group: sales | customers | menu | analytics | financial | waros | queries (omit to list all)
     group: Option<String>,
 
     /// Subcommand: list | metrics | detail | products | recipes | modifiers |
@@ -50,7 +50,8 @@ fn valid_commands() -> &'static str {
      analytics menu, analytics food-cost, analytics alerts, analytics data-quality, \
      analytics cohort, analytics waros, analytics rfm, analytics churn-risk, \
      financial products, \
-     waros estimate, waros balances, waros customer"
+     waros estimate, waros balances, waros customer, \
+     queries schema, queries run"
 }
 
 fn all_schemas() -> Value {
@@ -77,6 +78,8 @@ fn all_schemas() -> Value {
         schema_for("waros", "estimate").unwrap(),
         schema_for("waros", "balances").unwrap(),
         schema_for("waros", "customer").unwrap(),
+        schema_for("queries", "schema").unwrap(),
+        schema_for("queries", "run").unwrap(),
     ])
 }
 
@@ -99,6 +102,25 @@ fn schema_for(group: &str, subcommand: &str) -> Option<Value> {
                 { "name": "timezone",       "type": "string",  "default": "America/Bogota", "required": false, "description": "IANA timezone" },
                 { "name": "sort-field",     "type": "string",  "default": "order_date",     "required": false, "description": "Field to sort by" },
                 { "name": "sort-direction", "type": "string",  "default": "desc",           "required": false, "description": "Sort direction: asc | desc" }
+            ]
+        })),
+        ("queries", "schema") => Some(json!({
+            "command": "queries schema",
+            "method": "GET",
+            "path": "/v1/queries/schema",
+            "scope": "read",
+            "paginates": false,
+            "params": []
+        })),
+        ("queries", "run") => Some(json!({
+            "command": "queries run",
+            "method": "POST",
+            "path": "/v1/queries/run",
+            "scope": "dataset_scope",
+            "paginates": false,
+            "params": [
+                { "name": "spec", "type": "json|string", "default": null, "required": true, "description": "QuerySpec JSON string or path to a JSON file" },
+                { "name": "dry-run", "type": "boolean", "default": false, "required": false, "description": "Validate and print request locally without calling the API" }
             ]
         })),
         ("sales", "metrics") => Some(json!({

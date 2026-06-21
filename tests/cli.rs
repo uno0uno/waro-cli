@@ -76,6 +76,8 @@ fn contract_registry_covers_schema_commands() {
         "waros estimate",
         "waros balances",
         "waros customer",
+        "queries schema",
+        "queries run",
     ];
 
     for command in commands {
@@ -244,6 +246,22 @@ fn rows_for_contract_extracts_supported_shapes() {
         churn,
     );
     assert_eq!(rows[0]["risk_score"], 0.8);
+
+    let queries_schema = contract::contract_for("queries schema").unwrap();
+    assert_eq!(queries_schema.shape, ResponseShape::NestedRows);
+    let rows = rows_for_contract(
+        &json!({ "success": true, "data": { "datasets": [{ "name": "sales_items" }] } }),
+        queries_schema,
+    );
+    assert_eq!(rows[0]["name"], "sales_items");
+
+    let queries_run = contract::contract_for("queries run").unwrap();
+    assert_eq!(queries_run.shape, ResponseShape::NestedRows);
+    let rows = rows_for_contract(
+        &json!({ "success": true, "data": { "rows": [{ "product": "Burger", "revenue": 120000 }], "columns": ["product", "revenue"] } }),
+        queries_run,
+    );
+    assert_eq!(rows[0]["product"], "Burger");
 }
 
 #[test]
