@@ -83,7 +83,70 @@ fn contract_registry_covers_schema_commands() {
         assert!(response.get("fields").is_some());
         assert!(response.get("default_fields").is_some());
         assert!(response.get("top_level_keys").is_some());
+
+        let metadata = contract.metadata_json();
+        assert!(metadata.get("domain").is_some());
+        assert!(metadata.get("description").is_some());
+        assert!(metadata.get("tags").is_some());
+        assert!(metadata.get("examples").is_some());
+        assert!(metadata.get("capabilities").is_some());
+
+        let capabilities = &metadata["capabilities"];
+        assert!(capabilities.get("entity").is_some());
+        assert!(capabilities.get("grain").is_some());
+        assert!(capabilities.get("measures").is_some());
+        assert!(capabilities.get("dimensions").is_some());
+        assert!(capabilities.get("supported_operations").is_some());
+        assert!(capabilities.get("semantic_aliases").is_some());
+        assert!(capabilities.get("answer_patterns").is_some());
     }
+}
+
+#[test]
+fn semantic_capabilities_describe_customer_rankings() {
+    let contract = contract::contract_for("customers list").unwrap();
+    let metadata = contract.metadata_json();
+
+    assert_eq!(metadata["domain"], "customers");
+    assert_eq!(metadata["capabilities"]["entity"], "customer");
+    assert_eq!(metadata["capabilities"]["grain"], "customer_period");
+
+    let total_spent_aliases = metadata["capabilities"]["semantic_aliases"]["total_spent"]
+        .as_array()
+        .unwrap();
+    assert!(total_spent_aliases.contains(&json!("valor comprado")));
+    assert!(total_spent_aliases.contains(&json!("mejores clientes")));
+
+    let order_count_aliases = metadata["capabilities"]["semantic_aliases"]["order_count"]
+        .as_array()
+        .unwrap();
+    assert!(order_count_aliases.contains(&json!("clientes frecuentes")));
+}
+
+#[test]
+fn semantic_capabilities_separate_order_rows_from_product_margin_analysis() {
+    let sales_list = contract::contract_for("sales list")
+        .unwrap()
+        .metadata_json();
+    assert_eq!(sales_list["capabilities"]["entity"], "order");
+    assert!(sales_list["capabilities"]["cannot_answer"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("product_margin_analysis")));
+
+    let food_cost = contract::contract_for("analytics food-cost")
+        .unwrap()
+        .metadata_json();
+    assert_eq!(food_cost["capabilities"]["entity"], "product");
+    assert_eq!(food_cost["capabilities"]["grain"], "product_period");
+    assert!(food_cost["capabilities"]["measures"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("profit_margin_pct")));
+    assert!(food_cost["capabilities"]["measures"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("total_units_sold")));
 }
 
 #[test]

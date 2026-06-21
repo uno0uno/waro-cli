@@ -329,6 +329,11 @@ fn augment_response_contract(mut schema: Value) -> Value {
         map.insert("scope".to_string(), json!(contract.scope));
         map.insert("paginates".to_string(), json!(contract.paginates));
         map.insert("response".to_string(), contract.response_json());
+        if let Value::Object(metadata) = contract.metadata_json() {
+            for (key, value) in metadata {
+                map.insert(key, value);
+            }
+        }
     }
     schema
 }

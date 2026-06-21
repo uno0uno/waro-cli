@@ -48,6 +48,470 @@ impl CommandContract {
             "top_level_keys": self.top_level_keys,
         })
     }
+
+    pub fn metadata_json(self) -> Value {
+        semantic_metadata_for(self.command).unwrap_or_else(|| {
+            let domain = self.command.split_whitespace().next().unwrap_or("unknown");
+            json!({
+                "domain": domain,
+                "description": format!("WARO {} command.", self.command),
+                "tags": [domain],
+                "examples": [],
+                "capabilities": {
+                    "entity": domain,
+                    "grain": "unknown",
+                    "measures": [],
+                    "dimensions": self.fields,
+                    "supported_operations": ["filter", "limit"],
+                    "default_rank": [],
+                    "active_condition": [],
+                    "supports_period": self.fields.iter().any(|field| *field == "orderDate" || *field == "last_order_date"),
+                    "semantic_aliases": {},
+                    "answer_patterns": [],
+                    "join_keys": [],
+                    "cannot_answer": []
+                }
+            })
+        })
+    }
+}
+
+fn semantic_metadata_for(command: &str) -> Option<Value> {
+    let metadata = match command {
+        "sales list" => json!({
+            "domain": "sales",
+            "description": "Lista ordenes individuales con estado, fecha, metodo de pago, cliente, items y total.",
+            "tags": ["sales", "orders", "transactions", "payments"],
+            "examples": ["ordenes de ayer", "ventas canceladas", "ultimas ventas", "pedidos por metodo de pago"],
+            "capabilities": {
+                "entity": "order",
+                "grain": "order",
+                "measures": ["totalAmount", "itemsCount"],
+                "dimensions": ["id", "orderNumber", "status", "paymentMethod", "orderDate", "customer", "items"],
+                "supported_operations": ["filter", "sort", "limit", "list"],
+                "default_rank": ["orderDate"],
+                "active_condition": ["status=completed"],
+                "supports_period": true,
+                "semantic_aliases": {
+                    "totalAmount": ["valor", "total", "monto", "venta individual"],
+                    "itemsCount": ["items", "productos por orden", "cantidad de items"],
+                    "orderDate": ["fecha", "ayer", "hoy", "este mes", "periodo"],
+                    "status": ["estado", "canceladas", "pendientes", "completadas"]
+                },
+                "answer_patterns": ["listar ordenes", "ver pedidos", "ventas individuales", "pedidos cancelados"],
+                "join_keys": ["id", "customer.id"],
+                "cannot_answer": ["aggregate_sales_metrics", "product_margin_analysis", "customer_period_ranking"]
+            }
+        }),
+        "sales metrics" => json!({
+            "domain": "sales",
+            "description": "Metricas agregadas de ventas por periodo y agrupaciones de fecha, hora, producto, pago o ticket.",
+            "tags": ["sales", "metrics", "revenue", "avg_ticket", "product_sales"],
+            "examples": ["cuanto vendi ayer", "ticket promedio", "ventas por hora", "productos mas vendidos"],
+            "capabilities": {
+                "entity": "sale",
+                "grain": "period_or_group",
+                "measures": ["totalSales", "totalOrders", "avgTicket", "totalQuantity", "totalRevenue", "ordersCount"],
+                "dimensions": ["date", "weekday", "hour", "product", "payment", "ticket"],
+                "supported_operations": ["aggregate", "group", "rank", "sort", "limit", "compare"],
+                "default_rank": ["totalSales", "totalRevenue", "totalQuantity"],
+                "active_condition": ["completedOrders", "totalSales"],
+                "supports_period": true,
+                "semantic_aliases": {
+                    "totalSales": ["ventas", "vendi", "ingresos", "facturacion"],
+                    "avgTicket": ["ticket promedio", "promedio por orden", "valor promedio"],
+                    "totalOrders": ["ordenes", "pedidos", "transacciones"],
+                    "totalQuantity": ["cantidad vendida", "unidades vendidas", "volumen"],
+                    "totalRevenue": ["revenue", "ingresos por producto", "valor vendido"]
+                },
+                "answer_patterns": ["cuanto vendi", "ticket promedio", "ventas agrupadas", "productos mas vendidos"],
+                "join_keys": ["productId"],
+                "cannot_answer": ["product_cost_or_margin_without_financial_data", "customer_profile_details"]
+            }
+        }),
+        "sales detail" => json!({
+            "domain": "sales",
+            "description": "Detalle de una orden especifica por UUID.",
+            "tags": ["sales", "orders", "detail"],
+            "examples": ["detalle de la orden", "items de una venta"],
+            "capabilities": {
+                "entity": "order",
+                "grain": "order_detail",
+                "measures": ["totalAmount"],
+                "dimensions": ["id", "orderNumber", "status", "paymentMethod", "orderDate", "customer", "items"],
+                "supported_operations": ["lookup"],
+                "default_rank": [],
+                "active_condition": [],
+                "supports_period": false,
+                "semantic_aliases": {
+                    "order-id": ["orden", "pedido", "venta especifica"]
+                },
+                "answer_patterns": ["detalle de orden", "ver una venta"],
+                "join_keys": ["id", "customer.id"],
+                "cannot_answer": ["aggregate_metrics", "rankings"]
+            }
+        }),
+        "customers list" => json!({
+            "domain": "customers",
+            "description": "Lista clientes con frecuencia, valor comprado, ticket promedio, ultima compra y saldo WAROS.",
+            "tags": ["customers", "ranking", "frequency", "spend", "loyalty"],
+            "examples": ["clientes que mas compraron", "clientes frecuentes", "mejores clientes", "clientes con mayor ticket"],
+            "capabilities": {
+                "entity": "customer",
+                "grain": "customer_period",
+                "measures": ["total_spent", "order_count", "avg_ticket", "waros_balance"],
+                "dimensions": ["customer_id", "name", "phone", "last_order_date"],
+                "supported_operations": ["filter", "rank", "sort", "limit", "compare", "list"],
+                "default_rank": ["total_spent", "order_count"],
+                "active_condition": ["order_count", "total_spent"],
+                "supports_period": true,
+                "semantic_aliases": {
+                    "total_spent": ["valor comprado", "mayor compra", "compraron", "gasto", "dinero comprado", "mejores clientes"],
+                    "order_count": ["frecuencia", "clientes frecuentes", "ordenes", "pedidos", "recompra"],
+                    "avg_ticket": ["ticket promedio", "promedio por cliente"],
+                    "last_order_date": ["ultima compra", "recientes", "inactivos"]
+                },
+                "answer_patterns": ["clientes mas frecuentes", "clientes que mas compraron", "mejores clientes", "ranking de clientes"],
+                "join_keys": ["customer_id"],
+                "cannot_answer": ["order_item_margin", "product_cost_analysis"]
+            }
+        }),
+        "customers detail" => json!({
+            "domain": "customers",
+            "description": "Detalle e historial de un cliente especifico.",
+            "tags": ["customers", "detail", "orders"],
+            "examples": ["historial de cliente", "detalle de cliente"],
+            "capabilities": {
+                "entity": "customer",
+                "grain": "customer_detail",
+                "measures": ["total_spent", "order_count", "avg_ticket"],
+                "dimensions": ["customer_id", "orders"],
+                "supported_operations": ["lookup", "summarize"],
+                "default_rank": [],
+                "active_condition": [],
+                "supports_period": true,
+                "semantic_aliases": {
+                    "customer-id": ["cliente", "perfil", "historial"]
+                },
+                "answer_patterns": ["detalle de cliente", "historial de cliente"],
+                "join_keys": ["customer_id"],
+                "cannot_answer": ["global_customer_ranking_without_customer_id"]
+            }
+        }),
+        "customers orders" => json!({
+            "domain": "customers",
+            "description": "Ordenes de un cliente especifico por periodo.",
+            "tags": ["customers", "orders", "history"],
+            "examples": ["ordenes de este cliente", "compras de un cliente"],
+            "capabilities": {
+                "entity": "customer_order",
+                "grain": "order",
+                "measures": ["totalAmount", "itemsCount"],
+                "dimensions": ["customer_id", "id", "orderNumber", "status", "paymentMethod", "orderDate"],
+                "supported_operations": ["lookup", "filter", "list"],
+                "default_rank": ["orderDate"],
+                "active_condition": ["status=completed"],
+                "supports_period": true,
+                "semantic_aliases": {
+                    "totalAmount": ["monto comprado", "valor de compra"],
+                    "orderDate": ["fecha de compra", "historial"]
+                },
+                "answer_patterns": ["ordenes del cliente", "historial de compras"],
+                "join_keys": ["customer_id", "id"],
+                "cannot_answer": ["all_customer_ranking"]
+            }
+        }),
+        "customers metrics" => json!({
+            "domain": "customers",
+            "description": "Resumen de clientes, nuevos vs recurrentes, series temporales y top customers.",
+            "tags": ["customers", "metrics", "retention", "ranking"],
+            "examples": ["clientes nuevos este mes", "clientes recurrentes", "top clientes", "retencion de clientes"],
+            "capabilities": {
+                "entity": "customer",
+                "grain": "customer_period_summary",
+                "measures": ["total_customers", "new_customers", "returning_customers", "total_revenue", "avg_ticket", "order_count", "total_spent"],
+                "dimensions": ["date", "weekday", "month", "customer_id", "name", "phone"],
+                "supported_operations": ["aggregate", "group", "rank", "compare", "summarize"],
+                "default_rank": ["total_spent", "order_count"],
+                "active_condition": ["returning_customers", "order_count", "total_spent"],
+                "supports_period": true,
+                "semantic_aliases": {
+                    "new_customers": ["clientes nuevos", "nuevos"],
+                    "returning_customers": ["clientes recurrentes", "clientes que vuelven"],
+                    "order_count": ["frecuencia", "ordenes", "pedidos"],
+                    "total_spent": ["valor comprado", "mayor compra", "gasto"]
+                },
+                "answer_patterns": ["metricas de clientes", "retencion", "clientes nuevos vs recurrentes", "top clientes"],
+                "join_keys": ["customer_id"],
+                "cannot_answer": ["product_margin_analysis"]
+            }
+        }),
+        "menu products" => json!({
+            "domain": "menu",
+            "description": "Catalogo actual de productos, precios, costos configurados, recetas, ingredientes, modificadores y disponibilidad.",
+            "tags": ["menu", "products", "catalog", "recipes", "availability"],
+            "examples": ["productos disponibles", "precios del menu", "productos sin ingredientes", "costos configurados"],
+            "capabilities": {
+                "entity": "product",
+                "grain": "product",
+                "measures": ["price", "calculatedCost", "perceivedCost", "preparationTime"],
+                "dimensions": ["id", "name", "category", "isAvailable", "ingredients", "recipeBases", "modifierGroups"],
+                "supported_operations": ["filter", "lookup", "list", "summarize"],
+                "default_rank": ["name"],
+                "active_condition": ["isAvailable=true"],
+                "supports_period": false,
+                "semantic_aliases": {
+                    "isAvailable": ["disponible", "activo", "vendible"],
+                    "price": ["precio", "valor del producto"],
+                    "calculatedCost": ["costo calculado", "costo receta"],
+                    "perceivedCost": ["costo percibido"]
+                },
+                "answer_patterns": ["catalogo de productos", "menu disponible", "precios del menu"],
+                "join_keys": ["id"],
+                "cannot_answer": ["period_sales_without_sales_or_analytics", "margin_from_live_sales"]
+            }
+        }),
+        "menu recipes" => json!({
+            "domain": "menu",
+            "description": "Recetas activas e ingredientes configurados.",
+            "tags": ["menu", "recipes", "ingredients"],
+            "examples": ["recetas activas", "ingredientes por receta"],
+            "capabilities": {
+                "entity": "recipe",
+                "grain": "recipe",
+                "measures": [],
+                "dimensions": ["id", "name", "description", "ingredients", "isActive"],
+                "supported_operations": ["filter", "lookup", "list"],
+                "default_rank": ["name"],
+                "active_condition": ["isActive=true"],
+                "supports_period": false,
+                "semantic_aliases": {
+                    "ingredients": ["ingredientes", "insumos"],
+                    "isActive": ["activa", "inactiva"]
+                },
+                "answer_patterns": ["recetas", "ingredientes de recetas"],
+                "join_keys": ["id"],
+                "cannot_answer": ["sales_metrics", "customer_metrics"]
+            }
+        }),
+        "menu modifiers" => json!({
+            "domain": "menu",
+            "description": "Grupos de modificadores del menu y productos asociados.",
+            "tags": ["menu", "modifiers", "addons"],
+            "examples": ["modificadores", "adiciones", "opciones del producto"],
+            "capabilities": {
+                "entity": "modifier_group",
+                "grain": "modifier_group",
+                "measures": ["minQty", "maxQty"],
+                "dimensions": ["id", "name", "isRequired", "modifiers", "associatedProducts"],
+                "supported_operations": ["filter", "lookup", "list"],
+                "default_rank": ["name"],
+                "active_condition": [],
+                "supports_period": false,
+                "semantic_aliases": {
+                    "modifiers": ["modificadores", "adiciones", "opciones"],
+                    "isRequired": ["obligatorio", "requerido"]
+                },
+                "answer_patterns": ["modificadores del menu", "adiciones"],
+                "join_keys": ["id"],
+                "cannot_answer": ["sales_metrics", "customer_metrics"]
+            }
+        }),
+        "analytics menu" => json!({
+            "domain": "analytics",
+            "description": "Analisis de performance del menu por producto: unidades vendidas, ingresos, costos estimados, ganancia y margen.",
+            "tags": ["analytics", "menu", "products", "margin", "sales"],
+            "examples": ["productos vendidos mucho con bajo margen", "productos estrella", "rentabilidad del menu", "productos con baja ganancia"],
+            "capabilities": {
+                "entity": "product",
+                "grain": "product_period",
+                "measures": ["total_units_sold", "total_revenue", "profit_margin_pct", "profit_margin_real_pct", "profit_per_unit", "total_profit", "estimated_cost", "price"],
+                "dimensions": ["id", "name", "category", "classification"],
+                "supported_operations": ["aggregate", "filter", "rank", "sort", "limit", "diagnose"],
+                "default_rank": ["total_units_sold", "total_revenue", "profit_margin_pct"],
+                "active_condition": ["total_units_sold", "total_revenue"],
+                "supports_period": true,
+                "semantic_aliases": {
+                    "total_units_sold": ["vendieron mucho", "mas vendidos", "unidades vendidas", "volumen"],
+                    "total_revenue": ["ingresos", "revenue", "valor vendido"],
+                    "profit_margin_pct": ["margen", "margen bajo", "rentabilidad"],
+                    "profit_per_unit": ["ganancia por unidad", "utilidad unitaria"],
+                    "classification": ["estrella", "perro", "vaca", "incognita"]
+                },
+                "answer_patterns": ["productos con bajo margen", "productos que venden mucho", "rentabilidad de productos", "menu engineering"],
+                "join_keys": ["id", "name"],
+                "cannot_answer": ["customer_ranking"]
+            }
+        }),
+        "analytics food-cost" => json!({
+            "domain": "analytics",
+            "description": "Food cost y margen por producto con datos de costo, precio, venta y rentabilidad.",
+            "tags": ["analytics", "food_cost", "products", "margin", "cost"],
+            "examples": ["food cost por producto", "productos con bajo margen", "costo de productos", "rentabilidad por producto"],
+            "capabilities": {
+                "entity": "product",
+                "grain": "product_period",
+                "measures": ["profit_margin_pct", "profit_margin_real_pct", "estimated_cost", "profit_per_unit", "total_profit", "total_revenue", "total_units_sold"],
+                "dimensions": ["id", "name", "category", "classification"],
+                "supported_operations": ["filter", "rank", "sort", "limit", "diagnose"],
+                "default_rank": ["profit_margin_pct", "total_units_sold"],
+                "active_condition": ["total_units_sold", "total_revenue"],
+                "supports_period": true,
+                "semantic_aliases": {
+                    "profit_margin_pct": ["margen", "bajo margen", "rentabilidad"],
+                    "estimated_cost": ["costo", "food cost", "costo estimado"],
+                    "total_units_sold": ["vendieron mucho", "unidades vendidas", "volumen"],
+                    "total_revenue": ["ingresos", "valor vendido"]
+                },
+                "answer_patterns": ["productos vendidos mucho con bajo margen", "food cost", "margen de productos"],
+                "join_keys": ["id", "name"],
+                "cannot_answer": ["customer_ranking"]
+            }
+        }),
+        "analytics alerts" => json!({
+            "domain": "analytics",
+            "description": "Alertas analiticas y recomendaciones accionables.",
+            "tags": ["analytics", "alerts", "recommendations"],
+            "examples": ["alertas del negocio", "recomendaciones", "problemas detectados"],
+            "capabilities": {
+                "entity": "alert",
+                "grain": "alert",
+                "measures": [],
+                "dimensions": ["id", "type", "title", "description", "action"],
+                "supported_operations": ["list", "summarize", "diagnose"],
+                "default_rank": [],
+                "active_condition": [],
+                "supports_period": false,
+                "semantic_aliases": {
+                    "action": ["accion", "recomendacion"],
+                    "type": ["tipo de alerta", "categoria"]
+                },
+                "answer_patterns": ["alertas", "recomendaciones", "diagnostico"],
+                "join_keys": ["id"],
+                "cannot_answer": ["raw_sales_metrics"]
+            }
+        }),
+        "analytics data-quality" => json!({
+            "domain": "analytics",
+            "description": "Alertas de calidad de datos en compras, ingredientes, proveedores y desviaciones de costo.",
+            "tags": ["analytics", "data_quality", "purchases", "ingredients", "cost"],
+            "examples": ["problemas de calidad de datos", "compras con desviacion", "alertas de costos"],
+            "capabilities": {
+                "entity": "data_quality_alert",
+                "grain": "alert",
+                "measures": ["actual_value", "expected_value", "deviation_pct", "rolling_avg"],
+                "dimensions": ["ingredient_id", "ingredient_name", "supplier_name", "purchase_date", "severity", "resolved"],
+                "supported_operations": ["filter", "list", "diagnose", "summarize"],
+                "default_rank": ["severity", "deviation_pct"],
+                "active_condition": ["resolved=false"],
+                "supports_period": false,
+                "semantic_aliases": {
+                    "deviation_pct": ["desviacion", "variacion", "anomalia"],
+                    "severity": ["severidad", "critico", "alerta"],
+                    "resolved": ["resuelto", "pendiente"]
+                },
+                "answer_patterns": ["calidad de datos", "alertas de compras", "costos anomalos"],
+                "join_keys": ["ingredient_id", "purchase_id"],
+                "cannot_answer": ["customer_ranking", "sales_total"]
+            }
+        }),
+        "financial products" => json!({
+            "domain": "financial",
+            "description": "Analisis financiero de productos con ventas, margen, costo, ganancia, clasificacion e impacto.",
+            "tags": ["financial", "products", "margin", "profit", "revenue", "cost"],
+            "examples": ["productos de bajo margen", "productos rentables", "productos que mas ingresos generan", "productos con alto costo"],
+            "capabilities": {
+                "entity": "product",
+                "grain": "product_period",
+                "measures": ["sales", "margin", "cost", "profit", "price", "order_count", "tirImpact"],
+                "dimensions": ["id", "name", "category", "classification", "last_order_date"],
+                "supported_operations": ["filter", "rank", "sort", "limit", "diagnose", "compare"],
+                "default_rank": ["margin", "sales", "profit"],
+                "active_condition": ["sales", "order_count"],
+                "supports_period": true,
+                "semantic_aliases": {
+                    "sales": ["ventas", "vendieron mucho", "ingresos", "revenue"],
+                    "margin": ["margen", "bajo margen", "rentabilidad"],
+                    "cost": ["costo", "food cost"],
+                    "profit": ["ganancia", "utilidad"],
+                    "order_count": ["ordenes", "frecuencia"]
+                },
+                "answer_patterns": ["productos vendidos mucho con bajo margen", "rentabilidad de productos", "ranking financiero de productos"],
+                "join_keys": ["id", "name"],
+                "cannot_answer": ["customer_ranking"]
+            }
+        }),
+        "waros estimate" => json!({
+            "domain": "waros",
+            "description": "Estimacion de puntos WAROS ganados por una compra.",
+            "tags": ["waros", "loyalty", "points"],
+            "examples": ["cuantos waros gana una compra", "estimar puntos"],
+            "capabilities": {
+                "entity": "loyalty_estimate",
+                "grain": "purchase",
+                "measures": ["earned", "total", "tier"],
+                "dimensions": ["customer-id"],
+                "supported_operations": ["calculate"],
+                "default_rank": [],
+                "active_condition": [],
+                "supports_period": false,
+                "semantic_aliases": {
+                    "earned": ["puntos ganados", "waros ganados"],
+                    "total": ["total compra", "monto"]
+                },
+                "answer_patterns": ["estimar waros", "puntos por compra"],
+                "join_keys": ["customer-id"],
+                "cannot_answer": ["customer_balance_without_profile"]
+            }
+        }),
+        "waros balances" => json!({
+            "domain": "waros",
+            "description": "Saldo WAROS para una lista de perfiles.",
+            "tags": ["waros", "loyalty", "balances"],
+            "examples": ["saldo waros", "balances de clientes"],
+            "capabilities": {
+                "entity": "loyalty_balance",
+                "grain": "customer",
+                "measures": ["balance"],
+                "dimensions": ["profile_id"],
+                "supported_operations": ["lookup", "list"],
+                "default_rank": ["balance"],
+                "active_condition": ["balance"],
+                "supports_period": false,
+                "semantic_aliases": {
+                    "balance": ["saldo", "puntos", "waros disponibles"]
+                },
+                "answer_patterns": ["saldo waros", "balance de puntos"],
+                "join_keys": ["profile_id"],
+                "cannot_answer": ["sales_metrics"]
+            }
+        }),
+        "waros customer" => json!({
+            "domain": "waros",
+            "description": "Resumen WAROS de un cliente especifico.",
+            "tags": ["waros", "loyalty", "customer"],
+            "examples": ["resumen waros de cliente", "tier del cliente"],
+            "capabilities": {
+                "entity": "loyalty_customer",
+                "grain": "customer",
+                "measures": ["balance", "tier"],
+                "dimensions": ["profile_id", "customer"],
+                "supported_operations": ["lookup", "summarize"],
+                "default_rank": [],
+                "active_condition": ["balance"],
+                "supports_period": false,
+                "semantic_aliases": {
+                    "balance": ["saldo", "puntos", "waros"],
+                    "tier": ["nivel", "categoria", "tier"]
+                },
+                "answer_patterns": ["resumen waros", "tier cliente", "saldo cliente"],
+                "join_keys": ["profile_id"],
+                "cannot_answer": ["sales_metrics"]
+            }
+        }),
+        _ => return None,
+    };
+    Some(metadata)
 }
 
 const SALES_LIST_FIELDS: &[&str] = &[

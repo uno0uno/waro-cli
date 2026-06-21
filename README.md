@@ -80,6 +80,8 @@ waro --output agent-json financial products --fields products,metrics
 waro schema
 waro schema sales list
 waro schema customers list | jq '.response.fields'
+waro schema customers list | jq '.capabilities'
+waro schema analytics food-cost | jq '.capabilities.semantic_aliases'
 waro schema sales detail | jq '.params[] | select(.required == true)'
 
 # Auto-paginate (NDJSON output, one object per line)

@@ -14,6 +14,7 @@ cargo build --release
 - Use `--output agent-json` for machine workflows; it returns a stable envelope and structured errors
 - ALWAYS use `--fields` on list commands to reduce context window usage
 - Treat `waro schema <group> <subcommand> .response.fields` as the source of truth for valid fields
+- Treat `waro schema <group> <subcommand> .capabilities` as the source of truth for agent planning: entity, grain, measures, dimensions, operations, semantic aliases, join keys, and known limits
 - NEVER expose user emails, names, or phone numbers in outputs — work with IDs only
 - Pagination: use `--limit 50 --offset N` to page through results
 - Default timezone is `America/Bogota` — override with `--timezone America/Mexico_City` etc.
@@ -28,6 +29,8 @@ waro schema
 waro schema sales list
 waro schema sales detail
 waro schema customers list | jq '.response'
+waro schema customers list | jq '.capabilities'
+waro schema analytics food-cost | jq '.capabilities.semantic_aliases'
 
 # Find required params before calling
 waro schema sales detail | jq '.params[] | select(.required == true)'
