@@ -55,6 +55,8 @@ enum Commands {
     Financial(commands::financial::FinancialArgs),
     /// WaRo loyalty commands (estimate, balances, customer wallet)
     Waros(commands::waros::WarosArgs),
+    /// Safe analytical QuerySpec commands
+    Queries(commands::queries::QueriesArgs),
     /// Print current config (API URL, key prefix)
     Config,
     /// Generate shell completion script
@@ -122,8 +124,14 @@ fn error_kind(message: &str) -> &'static str {
         "validation"
     } else if message.contains("HTTP")
         || message.contains("API")
+        || message.contains("Cannot reach")
+        || message.contains("Network error")
         || message.contains("request")
         || message.contains("response")
+        || message.contains("Resource not found")
+        || message.contains("Insufficient scope")
+        || message.contains("Rate limit")
+        || message.contains("Server error")
     {
         "api"
     } else {
@@ -139,6 +147,7 @@ fn command_label(command: &Commands) -> String {
         Commands::Analytics(args) => args.command_label().to_string(),
         Commands::Financial(args) => args.command_label().to_string(),
         Commands::Waros(args) => args.command_label().to_string(),
+        Commands::Queries(args) => args.command_label().to_string(),
         Commands::Config => "config".to_string(),
         Commands::Completions { .. } => "completions".to_string(),
         Commands::Schema(_) => "schema".to_string(),
@@ -178,6 +187,9 @@ async fn run(cli: Cli) -> Result<()> {
             commands::financial::run(args, &client, &out_format, fields).await?
         }
         Commands::Waros(args) => commands::waros::run(args, &client, &out_format, fields).await?,
+        Commands::Queries(args) => {
+            commands::queries::run(args, &client, &out_format, fields).await?
+        }
         Commands::Config => {
             client.print_config();
         }

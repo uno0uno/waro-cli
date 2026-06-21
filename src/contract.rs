@@ -609,6 +609,60 @@ fn semantic_metadata_for(command: &str) -> Option<Value> {
                 "cannot_answer": ["sales_metrics"]
             }
         }),
+        "queries schema" => json!({
+            "domain": "queries",
+            "description": "Lista datasets, dimensiones, medidas, filtros y campos ordenables del contrato QuerySpec seguro.",
+            "tags": ["queries", "queryspec", "schema", "analytics"],
+            "examples": ["datasets disponibles", "campos para queryspec", "schema queries"],
+            "capabilities": {
+                "entity": "query_dataset",
+                "grain": "dataset",
+                "measures": [],
+                "dimensions": ["name", "label", "description", "required_scope", "dimensions", "measures", "filters", "sortable_fields"],
+                "supported_operations": ["discover", "list"],
+                "default_rank": ["name"],
+                "active_condition": [],
+                "supports_period": false,
+                "semantic_aliases": {
+                    "datasets": ["datasets", "tablas disponibles", "fuentes disponibles"],
+                    "measures": ["metricas", "medidas", "valores"],
+                    "dimensions": ["dimensiones", "campos", "agrupaciones"],
+                    "filters": ["filtros"],
+                    "sortable_fields": ["ordenar", "sort", "ranking"]
+                },
+                "answer_patterns": ["descubrir queryspec", "listar datasets", "ver campos disponibles"],
+                "join_keys": ["name"],
+                "cannot_answer": ["execute_query_without_run"]
+            }
+        }),
+        "queries run" => json!({
+            "domain": "queries",
+            "description": "Ejecuta un QuerySpec seguro validado por la API y devuelve filas analiticas normalizadas.",
+            "tags": ["queries", "queryspec", "analytics", "dynamic"],
+            "examples": ["productos mas vendidos con margen", "clientes por ticket promedio", "productos con utilidad baja"],
+            "capabilities": {
+                "entity": "query_row",
+                "grain": "dynamic_dataset_row",
+                "measures": ["quantity_sold", "revenue", "orders_count", "avg_price", "order_count", "total_spent", "avg_ticket", "waros_balance", "profit_per_unit", "profit_margin_pct", "profit_margin_real_pct", "profit_margin_operativo_pct", "total_profit"],
+                "dimensions": ["product", "product_id", "category", "day", "customer", "customer_id", "classification"],
+                "supported_operations": ["filter", "aggregate", "group", "rank", "sort", "limit", "compare"],
+                "default_rank": ["revenue", "quantity_sold", "total_profit", "total_spent"],
+                "active_condition": ["limit", "dataset"],
+                "supports_period": true,
+                "semantic_aliases": {
+                    "quantity_sold": ["unidades vendidas", "cantidad vendida", "volumen"],
+                    "revenue": ["ventas", "ingresos", "facturacion"],
+                    "total_profit": ["utilidad", "ganancia", "profit"],
+                    "profit_margin_pct": ["margen", "rentabilidad"],
+                    "total_spent": ["valor comprado", "gasto cliente"],
+                    "avg_ticket": ["ticket promedio"],
+                    "classification": ["clasificacion", "estrella", "plowhorse", "puzzle", "dog"]
+                },
+                "answer_patterns": ["analisis dinamico", "ranking con metricas", "comparar dimensiones", "diagnostico queryspec"],
+                "join_keys": ["product_id", "customer_id"],
+                "cannot_answer": ["raw_sql", "write_operations", "unallowlisted_fields"]
+            }
+        }),
         _ => return None,
     };
     Some(metadata)
@@ -812,6 +866,41 @@ const FINANCIAL_PRODUCTS_FIELDS: &[&str] = &[
 const WAROS_ESTIMATE_FIELDS: &[&str] = &["earned", "total", "tier"];
 const WAROS_BALANCES_FIELDS: &[&str] = &["profile_id", "balance"];
 const WAROS_CUSTOMER_FIELDS: &[&str] = &["balance", "customer", "profile_id", "tier"];
+const QUERIES_SCHEMA_FIELDS: &[&str] = &[
+    "default_limit",
+    "description",
+    "dimensions",
+    "filters",
+    "label",
+    "max_limit",
+    "measures",
+    "name",
+    "required_scope",
+    "sortable_fields",
+];
+const QUERIES_RUN_FIELDS: &[&str] = &[
+    "avg_price",
+    "avg_ticket",
+    "category",
+    "classification",
+    "customer",
+    "customer_id",
+    "day",
+    "last_order_date",
+    "order_count",
+    "orders_count",
+    "product",
+    "product_id",
+    "profit_margin_operativo_pct",
+    "profit_margin_pct",
+    "profit_margin_real_pct",
+    "profit_per_unit",
+    "quantity_sold",
+    "revenue",
+    "total_profit",
+    "total_spent",
+    "waros_balance",
+];
 
 const DATA_WRAPPER_KEYS: &[&str] = &["data", "meta", "pagination", "success"];
 const DATA_META_SUCCESS_KEYS: &[&str] = &["data", "meta", "success"];
@@ -831,6 +920,7 @@ const ANALYTICS_CHURN_RISK_KEYS: &[&str] = &[
     "total_count",
 ];
 const WAROS_BALANCES_KEYS: &[&str] = &["balances"];
+const QUERIES_TOP_LEVEL_KEYS: &[&str] = &["data", "success"];
 
 pub const CONTRACTS: &[CommandContract] = &[
     CommandContract {
@@ -1096,6 +1186,30 @@ pub const CONTRACTS: &[CommandContract] = &[
         fields: WAROS_CUSTOMER_FIELDS,
         default_fields: WAROS_CUSTOMER_FIELDS,
         top_level_keys: WAROS_CUSTOMER_FIELDS,
+    },
+    CommandContract {
+        command: "queries schema",
+        method: "GET",
+        path: "/v1/queries/schema",
+        scope: "read",
+        paginates: false,
+        shape: ResponseShape::NestedRows,
+        row_path: "data.datasets",
+        fields: QUERIES_SCHEMA_FIELDS,
+        default_fields: QUERIES_TOP_LEVEL_KEYS,
+        top_level_keys: QUERIES_TOP_LEVEL_KEYS,
+    },
+    CommandContract {
+        command: "queries run",
+        method: "POST",
+        path: "/v1/queries/run",
+        scope: "dataset_scope",
+        paginates: false,
+        shape: ResponseShape::NestedRows,
+        row_path: "data.rows",
+        fields: QUERIES_RUN_FIELDS,
+        default_fields: QUERIES_TOP_LEVEL_KEYS,
+        top_level_keys: QUERIES_TOP_LEVEL_KEYS,
     },
 ];
 

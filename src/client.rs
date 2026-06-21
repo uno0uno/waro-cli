@@ -1,6 +1,6 @@
 use crate::config::Config;
 use anyhow::Result;
-use reqwest::Client;
+use reqwest::{Client, Response};
 use serde_json::Value;
 
 pub struct WaroClient {
@@ -37,6 +37,30 @@ impl WaroClient {
                 }
             })?;
 
+        self.handle_response(resp).await
+    }
+
+    pub async fn get(&self, path: &str) -> Result<Value> {
+        let url = format!("{}{}", self.config.api_url, path);
+
+        let resp = self
+            .http
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.config.api_key))
+            .send()
+            .await
+            .map_err(|e| {
+                if e.is_connect() || e.is_timeout() {
+                    anyhow::anyhow!("Cannot reach {} — check WARO_API_URL", self.config.api_url)
+                } else {
+                    anyhow::anyhow!("Network error: {}", e)
+                }
+            })?;
+
+        self.handle_response(resp).await
+    }
+
+    async fn handle_response(&self, resp: Response) -> Result<Value> {
         let status = resp.status();
         let json: Value = resp.json().await?;
 
