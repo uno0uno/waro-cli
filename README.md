@@ -82,6 +82,8 @@ waro schema sales list
 waro schema customers list | jq '.response.fields'
 waro schema customers list | jq '.capabilities'
 waro schema analytics food-cost | jq '.capabilities.semantic_aliases'
+waro schema analytics rfm | jq '.capabilities'
+waro schema analytics churn-risk | jq '.capabilities'
 waro schema sales detail | jq '.params[] | select(.required == true)'
 
 # Auto-paginate (NDJSON output, one object per line)

@@ -415,6 +415,106 @@ fn semantic_metadata_for(command: &str) -> Option<Value> {
                 "cannot_answer": ["customer_ranking", "sales_total"]
             }
         }),
+        "analytics cohort" => json!({
+            "domain": "analytics",
+            "description": "Matriz de cohortes de retencion por semana o mes, con tamano inicial y porcentaje de regreso por periodo.",
+            "tags": ["analytics", "retention", "cohort", "customers"],
+            "examples": ["retencion por cohortes", "cohortes semanales", "clientes que regresan por mes"],
+            "capabilities": {
+                "entity": "customer",
+                "grain": "cohort_period",
+                "measures": ["cohort_size", "retention_count", "retention_pct"],
+                "dimensions": ["cohort_date", "cohort_label", "period", "retention_period"],
+                "supported_operations": ["aggregate", "compare", "summarize", "diagnose"],
+                "default_rank": ["cohort_date"],
+                "active_condition": ["cohort_size", "retention_pct"],
+                "supports_period": true,
+                "semantic_aliases": {
+                    "cohort_size": ["tamano de cohorte", "clientes iniciales"],
+                    "retention_pct": ["retencion", "porcentaje que regresa", "clientes que vuelven"],
+                    "period": ["semanal", "mensual", "cohorte"]
+                },
+                "answer_patterns": ["retencion por cohortes", "cohortes de clientes", "clientes que regresan"],
+                "join_keys": ["cohort_date"],
+                "cannot_answer": ["product_margin_analysis", "single_customer_lookup"]
+            }
+        }),
+        "analytics waros" => json!({
+            "domain": "analytics",
+            "description": "Analitica del programa WAROS: puntos emitidos, redimidos, tasa de redencion, miembros activos y agrupacion por dia, semana o cliente.",
+            "tags": ["analytics", "waros", "loyalty", "points", "redemption"],
+            "examples": ["waros emitidos", "redenciones por semana", "clientes con mas waros", "tasa de redencion"],
+            "capabilities": {
+                "entity": "loyalty_transaction",
+                "grain": "period_or_customer",
+                "measures": ["total_issued", "total_redeemed", "redemption_rate_pct", "active_members", "transaction_count"],
+                "dimensions": ["period", "customer", "name", "groupBy"],
+                "supported_operations": ["aggregate", "group", "rank", "compare", "summarize"],
+                "default_rank": ["total_issued", "total_redeemed"],
+                "active_condition": ["total_issued", "total_redeemed", "active_members"],
+                "supports_period": true,
+                "semantic_aliases": {
+                    "total_issued": ["waros emitidos", "puntos ganados", "puntos entregados"],
+                    "total_redeemed": ["waros redimidos", "puntos usados", "redenciones"],
+                    "redemption_rate_pct": ["tasa de redencion", "porcentaje redimido"],
+                    "active_members": ["miembros activos", "clientes activos"]
+                },
+                "answer_patterns": ["analitica waros", "redencion de puntos", "waros por cliente", "waros por periodo"],
+                "join_keys": ["customer_id", "period"],
+                "cannot_answer": ["sales_without_loyalty_context", "product_margin_analysis"]
+            }
+        }),
+        "analytics rfm" => json!({
+            "domain": "analytics",
+            "description": "Segmentacion RFM de clientes por recencia, frecuencia y valor monetario.",
+            "tags": ["analytics", "rfm", "customers", "segmentation", "retention"],
+            "examples": ["clientes champions", "segmentacion rfm", "clientes en riesgo", "clientes perdidos"],
+            "capabilities": {
+                "entity": "customer",
+                "grain": "customer_period_segment",
+                "measures": ["r_score", "f_score", "m_score", "order_count", "total_spent", "recency_days"],
+                "dimensions": ["customer_id", "customer_name", "segment", "last_order_date"],
+                "supported_operations": ["segment", "filter", "rank", "summarize", "diagnose"],
+                "default_rank": ["segment", "m_score", "f_score"],
+                "active_condition": ["order_count", "total_spent", "last_order_date"],
+                "supports_period": true,
+                "semantic_aliases": {
+                    "segment": ["segmento", "champions", "loyal", "at risk", "hibernating", "lost"],
+                    "r_score": ["recencia", "que tan reciente compro"],
+                    "f_score": ["frecuencia", "que tanto compra"],
+                    "m_score": ["monetario", "valor comprado", "gasto"],
+                    "total_spent": ["valor comprado", "dinero comprado"]
+                },
+                "answer_patterns": ["segmentacion rfm", "clientes champions", "clientes en riesgo", "clientes perdidos"],
+                "join_keys": ["customer_id"],
+                "cannot_answer": ["product_margin_analysis"]
+            }
+        }),
+        "analytics churn-risk" => json!({
+            "domain": "analytics",
+            "description": "Clientes en riesgo de churn por silencio relativo a su intervalo historico de visita.",
+            "tags": ["analytics", "churn", "customers", "retention", "risk"],
+            "examples": ["clientes en riesgo de abandono", "clientes que no han vuelto", "churn risk", "clientes silenciosos"],
+            "capabilities": {
+                "entity": "customer",
+                "grain": "customer_risk",
+                "measures": ["risk_score", "days_since_last_order", "avg_visit_interval_days", "order_count", "lifetime_value"],
+                "dimensions": ["customer_id", "name", "phone", "risk"],
+                "supported_operations": ["filter", "rank", "limit", "diagnose", "summarize"],
+                "default_rank": ["risk_score", "lifetime_value", "days_since_last_order"],
+                "active_condition": ["risk_score", "days_since_last_order", "order_count"],
+                "supports_period": false,
+                "semantic_aliases": {
+                    "risk_score": ["riesgo", "churn", "abandono"],
+                    "days_since_last_order": ["dias sin comprar", "silencio", "no ha vuelto"],
+                    "avg_visit_interval_days": ["intervalo promedio", "frecuencia historica"],
+                    "lifetime_value": ["valor de vida", "ltv", "valor comprado historico"]
+                },
+                "answer_patterns": ["clientes en riesgo de churn", "clientes que no han vuelto", "riesgo de abandono"],
+                "join_keys": ["customer_id"],
+                "cannot_answer": ["product_margin_analysis", "period_sales_total"]
+            }
+        }),
         "financial products" => json!({
             "domain": "financial",
             "description": "Analisis financiero de productos con ventas, margen, costo, ganancia, clasificacion e impacto.",
@@ -662,6 +762,39 @@ const ANALYTICS_DATA_QUALITY_FIELDS: &[&str] = &[
     "supplier_name",
     "tenant_id",
 ];
+const ANALYTICS_COHORT_FIELDS: &[&str] =
+    &["cohort_date", "cohort_label", "cohort_size", "retention"];
+const ANALYTICS_WAROS_FIELDS: &[&str] = &[
+    "active_members",
+    "name",
+    "period",
+    "redemption_rate_pct",
+    "total_earned",
+    "total_issued",
+    "total_redeemed",
+    "transaction_count",
+];
+const ANALYTICS_RFM_FIELDS: &[&str] = &[
+    "customer_id",
+    "customer_name",
+    "f_score",
+    "last_order_date",
+    "m_score",
+    "order_count",
+    "r_score",
+    "segment",
+    "total_spent",
+];
+const ANALYTICS_CHURN_RISK_FIELDS: &[&str] = &[
+    "avg_visit_interval_days",
+    "customer_id",
+    "days_since_last_order",
+    "lifetime_value",
+    "name",
+    "order_count",
+    "phone",
+    "risk_score",
+];
 const FINANCIAL_PRODUCTS_FIELDS: &[&str] = &[
     "category",
     "classification",
@@ -688,6 +821,15 @@ const CUSTOMER_METRICS_KEYS: &[&str] = &["summary", "top_customers"];
 const CUSTOMER_SERIES_KEYS: &[&str] = &["summary", "series"];
 const FINANCIAL_PRODUCTS_KEYS: &[&str] =
     &["categories", "filters", "insights", "metrics", "products"];
+const ANALYTICS_COHORT_KEYS: &[&str] = &["cohorts", "period", "periods"];
+const ANALYTICS_WAROS_KEYS: &[&str] = &["groups", "summary"];
+const ANALYTICS_RFM_KEYS: &[&str] = &["data"];
+const ANALYTICS_CHURN_RISK_KEYS: &[&str] = &[
+    "customers",
+    "min_orders",
+    "threshold_multiplier",
+    "total_count",
+];
 const WAROS_BALANCES_KEYS: &[&str] = &["balances"];
 
 pub const CONTRACTS: &[CommandContract] = &[
@@ -858,6 +1000,54 @@ pub const CONTRACTS: &[CommandContract] = &[
         fields: ANALYTICS_DATA_QUALITY_FIELDS,
         default_fields: &["data", "success"],
         top_level_keys: &["data", "success"],
+    },
+    CommandContract {
+        command: "analytics cohort",
+        method: "POST",
+        path: "/v1/analytics/cohort",
+        scope: "analytics:read",
+        paginates: false,
+        shape: ResponseShape::TopLevelRows,
+        row_path: "cohorts",
+        fields: ANALYTICS_COHORT_FIELDS,
+        default_fields: ANALYTICS_COHORT_KEYS,
+        top_level_keys: ANALYTICS_COHORT_KEYS,
+    },
+    CommandContract {
+        command: "analytics waros",
+        method: "POST",
+        path: "/v1/analytics/waros",
+        scope: "analytics:read",
+        paginates: false,
+        shape: ResponseShape::TopLevelRows,
+        row_path: "groups",
+        fields: ANALYTICS_WAROS_FIELDS,
+        default_fields: ANALYTICS_WAROS_KEYS,
+        top_level_keys: ANALYTICS_WAROS_KEYS,
+    },
+    CommandContract {
+        command: "analytics rfm",
+        method: "POST",
+        path: "/v1/analytics/rfm",
+        scope: "analytics:read",
+        paginates: false,
+        shape: ResponseShape::NestedRows,
+        row_path: "data.customers",
+        fields: ANALYTICS_RFM_FIELDS,
+        default_fields: ANALYTICS_RFM_KEYS,
+        top_level_keys: ANALYTICS_RFM_KEYS,
+    },
+    CommandContract {
+        command: "analytics churn-risk",
+        method: "POST",
+        path: "/v1/analytics/churn-risk",
+        scope: "analytics:read",
+        paginates: false,
+        shape: ResponseShape::TopLevelRows,
+        row_path: "customers",
+        fields: ANALYTICS_CHURN_RISK_FIELDS,
+        default_fields: ANALYTICS_CHURN_RISK_KEYS,
+        top_level_keys: ANALYTICS_CHURN_RISK_KEYS,
     },
     CommandContract {
         command: "financial products",

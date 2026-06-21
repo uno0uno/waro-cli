@@ -10,7 +10,8 @@ pub struct SchemaArgs {
     group: Option<String>,
 
     /// Subcommand: list | metrics | detail | products | recipes | modifiers |
-    ///             menu | food-cost | alerts | data-quality | estimate | balances | customer
+    ///             menu | food-cost | alerts | data-quality | cohort | waros | rfm |
+    ///             churn-risk | estimate | balances | customer
     subcommand: Option<String>,
 }
 
@@ -47,6 +48,7 @@ fn valid_commands() -> &'static str {
      customers list, customers detail, customers metrics, customers orders, \
      menu products, menu recipes, menu modifiers, \
      analytics menu, analytics food-cost, analytics alerts, analytics data-quality, \
+     analytics cohort, analytics waros, analytics rfm, analytics churn-risk, \
      financial products, \
      waros estimate, waros balances, waros customer"
 }
@@ -67,6 +69,10 @@ fn all_schemas() -> Value {
         schema_for("analytics", "food-cost").unwrap(),
         schema_for("analytics", "alerts").unwrap(),
         schema_for("analytics", "data-quality").unwrap(),
+        schema_for("analytics", "cohort").unwrap(),
+        schema_for("analytics", "waros").unwrap(),
+        schema_for("analytics", "rfm").unwrap(),
+        schema_for("analytics", "churn-risk").unwrap(),
         schema_for("financial", "products").unwrap(),
         schema_for("waros", "estimate").unwrap(),
         schema_for("waros", "balances").unwrap(),
@@ -266,6 +272,59 @@ fn schema_for(group: &str, subcommand: &str) -> Option<Value> {
             "scope": "analytics:read",
             "paginates": false,
             "params": []
+        })),
+        ("analytics", "cohort") => Some(json!({
+            "command": "analytics cohort",
+            "method": "POST",
+            "path": "/v1/analytics/cohort",
+            "scope": "analytics:read",
+            "paginates": false,
+            "params": [
+                { "name": "date-from", "type": "string",  "default": null,     "required": false, "description": "Start date YYYY-MM-DD" },
+                { "name": "date-to",   "type": "string",  "default": null,     "required": false, "description": "End date YYYY-MM-DD" },
+                { "name": "period",    "type": "string",  "default": "weekly", "required": false, "description": "Cohort period: weekly | monthly" },
+                { "name": "periods",   "type": "integer", "default": 8,        "required": false, "description": "Number of retention periods to show (1-52)" }
+            ]
+        })),
+        ("analytics", "waros") => Some(json!({
+            "command": "analytics waros",
+            "method": "POST",
+            "path": "/v1/analytics/waros",
+            "scope": "analytics:read",
+            "paginates": false,
+            "params": [
+                { "name": "date-from", "type": "string", "default": null, "required": false, "description": "Start date YYYY-MM-DD" },
+                { "name": "date-to",   "type": "string", "default": null, "required": false, "description": "End date YYYY-MM-DD" },
+                { "name": "group-by",  "type": "string", "default": "day", "required": false, "description": "Group by: day | week | customer" }
+            ]
+        })),
+        ("analytics", "rfm") => Some(json!({
+            "command": "analytics rfm",
+            "method": "POST",
+            "path": "/v1/analytics/rfm",
+            "scope": "analytics:read",
+            "paginates": false,
+            "params": [
+                { "name": "date-from",      "type": "string",  "default": null, "required": false, "description": "Start date YYYY-MM-DD (evaluation window)" },
+                { "name": "date-to",        "type": "string",  "default": null, "required": false, "description": "End date YYYY-MM-DD (evaluation window)" },
+                { "name": "segment",        "type": "string",  "default": null, "required": false, "description": "Filter output: champions | loyal | at-risk | hibernating | lost" },
+                { "name": "segments",       "type": "integer", "default": 5,    "required": false, "description": "Quintile count for scoring (2-10)" },
+                { "name": "show-customers", "type": "boolean", "default": false,"required": false, "description": "Expand each segment with individual customer rows" }
+            ]
+        })),
+        ("analytics", "churn-risk") => Some(json!({
+            "command": "analytics churn-risk",
+            "method": "POST",
+            "path": "/v1/analytics/churn-risk",
+            "scope": "analytics:read",
+            "paginates": false,
+            "params": [
+                { "name": "min-orders",   "type": "integer", "default": 3,     "required": false, "description": "Minimum lifetime orders to include a customer" },
+                { "name": "multiplier",   "type": "number",  "default": 2.0,   "required": false, "description": "Flag when silence exceeds N times average visit interval" },
+                { "name": "limit",        "type": "integer", "default": 20,    "required": false, "description": "Max customers to return" },
+                { "name": "risk",         "type": "string",  "default": null,  "required": false, "description": "Filter by risk level: high | medium" },
+                { "name": "show-contact", "type": "boolean", "default": false, "required": false, "description": "Include phone number column (PII opt-in)" }
+            ]
         })),
         ("financial", "products") => Some(json!({
             "command": "financial products",

@@ -29,6 +29,7 @@ pub enum AnalyticsCommands {
     /// Customer retention cohort matrix
     Cohort(CohortArgs),
     /// WaRos loyalty program analytics — totals and optional grouping by day/week/customer
+    #[command(name = "waros", alias = "waros-analytics")]
     WarosAnalytics(WarosAnalyticsArgs),
     /// RFM customer segmentation — Champions, Loyal, At Risk, Hibernating, Lost
     Rfm(RfmArgs),

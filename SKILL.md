@@ -31,6 +31,8 @@ waro schema sales detail
 waro schema customers list | jq '.response'
 waro schema customers list | jq '.capabilities'
 waro schema analytics food-cost | jq '.capabilities.semantic_aliases'
+waro schema analytics rfm | jq '.capabilities'
+waro schema analytics churn-risk | jq '.capabilities'
 
 # Find required params before calling
 waro schema sales detail | jq '.params[] | select(.required == true)'

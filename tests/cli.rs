@@ -68,6 +68,10 @@ fn contract_registry_covers_schema_commands() {
         "analytics food-cost",
         "analytics alerts",
         "analytics data-quality",
+        "analytics cohort",
+        "analytics waros",
+        "analytics rfm",
+        "analytics churn-risk",
         "financial products",
         "waros estimate",
         "waros balances",
@@ -219,6 +223,27 @@ fn rows_for_contract_extracts_supported_shapes() {
         balances,
     );
     assert_eq!(rows.len(), 2);
+
+    let cohort = contract::contract_for("analytics cohort").unwrap();
+    let rows = rows_for_contract(
+        &json!({ "cohorts": [{ "cohort_label": "2026-W24", "cohort_size": 12 }] }),
+        cohort,
+    );
+    assert_eq!(rows[0]["cohort_size"], 12);
+
+    let rfm = contract::contract_for("analytics rfm").unwrap();
+    let rows = rows_for_contract(
+        &json!({ "data": { "customers": [{ "customer_id": "c1", "segment": "Champions" }] } }),
+        rfm,
+    );
+    assert_eq!(rows[0]["segment"], "Champions");
+
+    let churn = contract::contract_for("analytics churn-risk").unwrap();
+    let rows = rows_for_contract(
+        &json!({ "customers": [{ "customer_id": "c1", "risk_score": 0.8 }] }),
+        churn,
+    );
+    assert_eq!(rows[0]["risk_score"], 0.8);
 }
 
 #[test]
