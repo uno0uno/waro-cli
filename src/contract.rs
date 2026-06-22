@@ -644,7 +644,7 @@ fn semantic_metadata_for(command: &str) -> Option<Value> {
                 "entity": "query_row",
                 "grain": "dynamic_dataset_row",
                 "measures": ["quantity_sold", "revenue", "orders_count", "avg_price", "order_count", "total_spent", "avg_ticket", "waros_balance", "profit_per_unit", "profit_margin_pct", "profit_margin_real_pct", "profit_margin_operativo_pct", "total_profit"],
-                "dimensions": ["product", "product_id", "category", "day", "customer", "customer_id", "classification"],
+                "dimensions": ["product", "product_id", "category", "day", "customer", "customer_id", "classification", "cost_source"],
                 "supported_operations": ["filter", "aggregate", "group", "rank", "sort", "limit", "compare"],
                 "default_rank": ["revenue", "quantity_sold", "total_profit", "total_spent"],
                 "active_condition": ["limit", "dataset"],
@@ -656,7 +656,8 @@ fn semantic_metadata_for(command: &str) -> Option<Value> {
                     "profit_margin_pct": ["margen", "rentabilidad"],
                     "total_spent": ["valor comprado", "gasto cliente"],
                     "avg_ticket": ["ticket promedio"],
-                    "classification": ["clasificacion", "estrella", "plowhorse", "puzzle", "dog"]
+                    "classification": ["clasificacion", "estrella", "plowhorse", "puzzle", "dog"],
+                    "cost_source": ["fuente de costo", "origen del costo", "costo real", "costo estimado"]
                 },
                 "answer_patterns": ["analisis dinamico", "ranking con metricas", "comparar dimensiones", "diagnostico queryspec"],
                 "join_keys": ["product_id", "customer_id"],
@@ -883,6 +884,7 @@ const QUERIES_RUN_FIELDS: &[&str] = &[
     "avg_ticket",
     "category",
     "classification",
+    "cost_source",
     "customer",
     "customer_id",
     "day",
@@ -1196,7 +1198,7 @@ pub const CONTRACTS: &[CommandContract] = &[
         shape: ResponseShape::NestedRows,
         row_path: "data.datasets",
         fields: QUERIES_SCHEMA_FIELDS,
-        default_fields: QUERIES_TOP_LEVEL_KEYS,
+        default_fields: QUERIES_SCHEMA_FIELDS,
         top_level_keys: QUERIES_TOP_LEVEL_KEYS,
     },
     CommandContract {
@@ -1208,7 +1210,7 @@ pub const CONTRACTS: &[CommandContract] = &[
         shape: ResponseShape::NestedRows,
         row_path: "data.rows",
         fields: QUERIES_RUN_FIELDS,
-        default_fields: QUERIES_TOP_LEVEL_KEYS,
+        default_fields: QUERIES_RUN_FIELDS,
         top_level_keys: QUERIES_TOP_LEVEL_KEYS,
     },
 ];
