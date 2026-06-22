@@ -156,6 +156,69 @@ fn semantic_capabilities_separate_order_rows_from_product_margin_analysis() {
 }
 
 #[test]
+fn queryspec_contract_advertises_procurement_datasets() {
+    let schema = contract::contract_for("queries schema").unwrap();
+    let schema_metadata = schema.metadata_json();
+    assert!(schema.fields.contains(&"limitations"));
+    assert!(schema_metadata["capabilities"]["dimensions"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("limitations")));
+
+    let run = contract::contract_for("queries run").unwrap();
+    let run_metadata = run.metadata_json();
+    let capabilities = &run_metadata["capabilities"];
+
+    for field in [
+        "current_stock",
+        "minimum_stock",
+        "stock_value",
+        "quantity_in",
+        "quantity_out",
+        "supplier",
+        "avg_unit_cost",
+    ] {
+        assert!(
+            run.fields.contains(&field),
+            "queries run fields should include {field}"
+        );
+    }
+
+    for measure in [
+        "current_stock",
+        "minimum_stock",
+        "stock_value",
+        "quantity_in",
+        "quantity_out",
+        "avg_unit_cost",
+        "purchase_count",
+    ] {
+        assert!(
+            capabilities["measures"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(measure)),
+            "queries run measures should include {measure}"
+        );
+    }
+
+    for dimension in ["ingredient", "ingredient_id", "supplier", "supplier_id"] {
+        assert!(
+            capabilities["dimensions"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(dimension)),
+            "queries run dimensions should include {dimension}"
+        );
+    }
+
+    assert!(run_metadata["tags"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("procurement")));
+}
+
+#[test]
 fn contract_rejects_unknown_row_fields_with_suggestion() {
     let contract = contract::contract_for("customers list").unwrap();
 
@@ -258,10 +321,13 @@ fn rows_for_contract_extracts_supported_shapes() {
     let queries_run = contract::contract_for("queries run").unwrap();
     assert_eq!(queries_run.shape, ResponseShape::NestedRows);
     let rows = rows_for_contract(
-        &json!({ "success": true, "data": { "rows": [{ "product": "Burger", "revenue": 120000 }], "columns": ["product", "revenue"] } }),
+        &json!({ "success": true, "data": { "rows": [{ "ingredient": "Harina", "current_stock": 12, "supplier": "Mercado Central", "avg_unit_cost": 2500 }], "columns": ["ingredient", "current_stock", "supplier", "avg_unit_cost"] } }),
         queries_run,
     );
-    assert_eq!(rows[0]["product"], "Burger");
+    assert_eq!(rows[0]["ingredient"], "Harina");
+    assert_eq!(rows[0]["current_stock"], 12);
+    assert_eq!(rows[0]["supplier"], "Mercado Central");
+    assert_eq!(rows[0]["avg_unit_cost"], 2500);
 }
 
 #[test]
