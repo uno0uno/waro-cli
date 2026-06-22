@@ -77,6 +77,7 @@ waro --output agent-json customers list --limit 20 --fields customer_id,name,tot
 waro --output agent-json financial products --fields products,metrics
 waro --output agent-json queries schema
 waro --output agent-json queries run --spec '{"dataset":"sales_items","measures":["revenue"],"dimensions":["product"],"order_by":[{"field":"revenue","direction":"desc"}],"limit":5}'
+waro --output agent-json queries run --spec '{"dataset":"inventory_stock","measures":["current_stock","minimum_stock","stock_value"],"dimensions":["ingredient","status"],"order_by":[{"field":"current_stock","direction":"asc"}],"limit":10}'
 
 # Inspect endpoint schema (useful for AI agents — no API key needed)
 waro schema
